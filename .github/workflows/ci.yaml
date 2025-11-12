@@ -1,0 +1,54 @@
+name: ci
+
+on: 
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    if: github.event.pull_request.draft == false || github.event_name == 'push'
+    name: Test on ${{ matrix.os }} with Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: ["ubuntu-latest", "macos-latest", "windows-latest"]
+        # only run for MSV Python 3.10 on PRs, but all versions on pushes to main
+        python-version: ${{ github.event_name == 'push' && fromJSON('["3.10", "3.11", "3.12"]') || fromJSON('["3.10"]') }}
+    env:
+      TURN_OFF_MPS_IF_RUNNING_CI: 1
+      MPLBACKEND: Agg
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-suffix: ${{ runner.os }}-${{ matrix.python-version }}
+          activate-environment: true
+
+      - name: Install dependencies
+        run: |
+          uv sync --extra dev
+
+      - name: Test with pytest
+        run: |
+          # stop pytest after 3 failures to save CI time
+          uv run pytest --maxfail=3 --cov-report=xml --cov-report=html

@@ -1,2 +1,2 @@
-def main() -> None:
+def main() -> None:  # noqa: D103
     print("Hello from auto-x!")

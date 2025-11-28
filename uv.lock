@@ -249,8 +249,11 @@ name = "auto-cast"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [
+    { name = "einops" },
+    { name = "h5py" },
     { name = "ice-station-zebra" },
     { name = "lightning" },
+    { name = "the-well" },
     { name = "torch" },
 ]
 
@@ -266,6 +269,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "einops", specifier = ">=0.8.1" },
+    { name = "h5py", specifier = ">=3.15.1" },
     { name = "ice-station-zebra", git = "https://github.com/alan-turing-institute/ice-station-zebra.git" },
     { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=7.1.0" },
     { name = "lightning", specifier = ">=2.5.6" },
@@ -274,6 +279,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.1" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.14.4" },
+    { name = "the-well", specifier = ">=1.1.0" },
     { name = "torch", specifier = ">=2.9.1" },
 ]
 provides-extras = ["dev"]
@@ -1018,6 +1024,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/54/5b/0bc6424595d7a0d4e14a9132a5eda730cfc4242af732adddbb8790a29834/ecmwf_datastores_client-0.4.1.tar.gz", hash = "sha256:206e60bac5250c8a9debacaec1e5d7e82e29081de5ff9f4d87b55308977fc308", size = 48199, upload-time = "2025-11-04T14:32:27.15Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a3/cf/7feb3222d770566ca9eaf0bf6922745fadd1ed7ab11832520063a515c240/ecmwf_datastores_client-0.4.1-py3-none-any.whl", hash = "sha256:a14515a892889a602ec2c81b15ec81d048932ca05480f12c778136028b6230a3", size = 29094, upload-time = "2025-11-04T14:32:25.936Z" },
+]
+
+[[package]]
+name = "einops"
+version = "0.8.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e5/81/df4fbe24dff8ba3934af99044188e20a98ed441ad17a274539b74e82e126/einops-0.8.1.tar.gz", hash = "sha256:de5d960a7a761225532e0f1959e5315ebeafc0cd43394732f103ca44b9837e84", size = 54805, upload-time = "2025-02-09T03:17:00.434Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/62/9773de14fe6c45c23649e98b83231fffd7b9892b6cf863251dc2afa73643/einops-0.8.1-py3-none-any.whl", hash = "sha256:919387eb55330f5757c6bea9165c5ff5cfe63a642682ea788a6d472576d81737", size = 64359, upload-time = "2025-02-09T03:17:01.998Z" },
 ]
 
 [[package]]
@@ -3602,6 +3617,22 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/87/56/ab275c2b56a5e2342568838f0d5e3e66a32354adcc159b495e374cda43f5/termcolor-3.2.0.tar.gz", hash = "sha256:610e6456feec42c4bcd28934a8c87a06c3fa28b01561d46aa09a9881b8622c58", size = 14423, upload-time = "2025-10-25T19:11:42.586Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f9/d5/141f53d7c1eb2a80e6d3e9a390228c3222c27705cbe7f048d3623053f3ca/termcolor-3.2.0-py3-none-any.whl", hash = "sha256:a10343879eba4da819353c55cb8049b0933890c2ebf9ad5d3ecd2bb32ea96ea6", size = 7698, upload-time = "2025-10-25T19:11:41.536Z" },
+]
+
+[[package]]
+name = "the-well"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "einops" },
+    { name = "h5py" },
+    { name = "numpy" },
+    { name = "pyyaml" },
+    { name = "torch" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8d/7f/66d88a4e9665b708a5dfa44b1d77cca5ff51ad304fd10cada228ad834391/the_well-1.1.0.tar.gz", hash = "sha256:c515e2076f18e671e07326ea23f01e50233c4b79b818b79a724faf54ca484f39", size = 76860, upload-time = "2025-04-04T10:26:12.224Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b7/f3/e4d7f8cc52ebca85285ff52345161e6af67acc82957504accb53abcdb9b1/the_well-1.1.0-py3-none-any.whl", hash = "sha256:cbf1de3c05a9155444bd79611931011f332a81bd7409f4e7fd08993b751a77ba", size = 80889, upload-time = "2025-04-04T10:26:10.415Z" },
 ]
 
 [[package]]

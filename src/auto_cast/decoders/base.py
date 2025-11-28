@@ -1,9 +1,9 @@
 from torch import nn
 
 from auto_cast.types import Tensor
+from abc import ABC
 
-
-class Decoder(nn.Module):
+class Decoder(nn.Module, ABC):
     """Base Decoder."""
 
     def __init__(self, latent_dim: int, output_channels: int) -> None:

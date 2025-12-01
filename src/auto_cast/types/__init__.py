@@ -16,8 +16,8 @@ RolloutOutput = tuple[Tensor, None] | tuple[Tensor, Tensor]
 class Batch:  # noqa: D101
     input_fields: Tensor  # (B, T, W, H, C)
     output_fields: Tensor  # (B, T, W, H, C)
-    constant_scalars: Tensor  # (B, C)
-    constant_fields: Tensor  # (B, W, H, C)
+    constant_scalars: Tensor | None  # (B, C)
+    constant_fields: Tensor | None  # (B, W, H, C)
 
 
 @dataclass

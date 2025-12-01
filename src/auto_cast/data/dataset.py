@@ -4,10 +4,21 @@ from the_well.data.normalization import ZScoreNormalization
 from torch.utils.data import Dataset
 
 from auto_cast.data.metadata import Metadata
+from auto_cast.types import Batch
 
 
 class SpatioTemporalDataset(Dataset):
     """A class for spatio-temporal datasets."""
+
+    @staticmethod
+    def to_batch(data: dict) -> Batch:
+        """Convert a dictionary of tensors to a Batch object."""
+        return Batch(
+            input_fields=data["input_fields"],
+            output_fields=data["output_fields"],
+            constant_scalars=data.get("constant_scalars"),
+            constant_fields=data.get("constant_fields"),
+        )
 
     def __init__(
         self,
@@ -196,7 +207,7 @@ class SpatioTemporalDataset(Dataset):
         if len(self.all_constant_fields) > 0:
             item["constant_fields"] = self.all_constant_fields[idx]
 
-        return item
+        return self.to_batch(item)
 
 
 class ReactionDiffusionDataset(SpatioTemporalDataset):

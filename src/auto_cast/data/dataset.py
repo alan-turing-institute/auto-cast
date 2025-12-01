@@ -1,5 +1,9 @@
+from collections.abc import Callable
+from typing import Any, Literal
+
 import h5py
 import torch
+from the_well.data.datasets import Augmentation, WellDataset
 from the_well.data.normalization import ZScoreNormalization
 from torch.utils.data import Dataset
 
@@ -7,8 +11,8 @@ from auto_cast.data.metadata import Metadata
 from auto_cast.types import Batch
 
 
-class SpatioTemporalDataset(Dataset):
-    """A class for spatio-temporal datasets."""
+class BatchMixin:
+    """A mixin class to provide Batch conversion functionality."""
 
     @staticmethod
     def to_batch(data: dict) -> Batch:
@@ -19,6 +23,10 @@ class SpatioTemporalDataset(Dataset):
             constant_scalars=data.get("constant_scalars"),
             constant_fields=data.get("constant_fields"),
         )
+
+
+class SpatioTemporalDataset(Dataset, BatchMixin):
+    """A class for spatio-temporal datasets."""
 
     def __init__(
         self,
@@ -286,3 +294,69 @@ class BOUTDataset(SpatioTemporalDataset):
             n_steps_per_trajectory=[self.data.shape[1]] * self.data.shape[0],
             grid_type="cartesian",
         )
+
+
+class TheWell(SpatioTemporalDataset):
+    """A wrapper around The Well's WellDataset to provide Batch objects."""
+
+    well_dataset: WellDataset
+
+    def __init__(
+        self,
+        path: None | str = None,
+        normalization_path: str = "../stats.yaml",
+        well_base_path: None | str = None,
+        well_dataset_name: None | str = None,
+        well_split_name: Literal["train", "valid", "test", None] = None,
+        include_filters: list[str] | None = None,
+        exclude_filters: list[str] | None = None,
+        use_normalization: bool = False,
+        normalization_type: None | Callable[..., Any] = None,
+        max_rollout_steps=100,
+        n_steps_input: int = 1,
+        n_steps_output: int = 1,
+        min_dt_stride: int = 1,
+        max_dt_stride: int = 1,
+        flatten_tensors: bool = True,
+        cache_small: bool = True,
+        max_cache_size: float = 1e9,
+        return_grid: bool = True,
+        boundary_return_type: str = "padding",
+        full_trajectory_mode: bool = False,
+        name_override: None | str = None,
+        transform: None | Augmentation = None,
+        min_std: float = 1e-4,
+        storage_options: None | dict = None,
+    ):
+        exclude_filters = exclude_filters or []
+        include_filters = include_filters or []
+        self.well_dataset = WellDataset(
+            path=path,
+            normalization_path=normalization_path,
+            well_base_path=well_base_path,
+            well_dataset_name=well_dataset_name,
+            well_split_name=well_split_name,
+            include_filters=include_filters,
+            exclude_filters=exclude_filters,
+            use_normalization=use_normalization,
+            normalization_type=normalization_type,
+            max_rollout_steps=max_rollout_steps,
+            n_steps_input=n_steps_input,
+            n_steps_output=n_steps_output,
+            min_dt_stride=min_dt_stride,
+            max_dt_stride=max_dt_stride,
+            flatten_tensors=flatten_tensors,
+            cache_small=cache_small,
+            max_cache_size=max_cache_size,
+            return_grid=return_grid,
+            boundary_return_type=boundary_return_type,
+            full_trajectory_mode=full_trajectory_mode,
+            name_override=name_override,
+            transform=transform,
+            min_std=min_std,
+            storage_options=storage_options,
+        )
+        self.well_metadata = self.well_dataset.metadata
+
+    def __getitem__(self, index) -> Batch:  # noqa: D105
+        return self.to_batch(self.well_dataset.__getitem__(index))

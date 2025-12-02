@@ -23,6 +23,11 @@ class EncoderDecoder(L.LightningModule):
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         return self.decoder(self.encoder(*args, **kwargs))
 
+    def forward_with_latent(self, batch: Batch) -> tuple[Tensor, Tensor]:
+        encoded = self.encode(batch)
+        decoded = self.decode(encoded)
+        return decoded, encoded
+
     def training_step(self, batch: Batch, batch_idx: int) -> Tensor:  # noqa: ARG002
         output = self(batch)
         loss = self.loss_func(output, batch.output_fields)

@@ -3,7 +3,7 @@ from typing import Any, Literal
 
 import h5py
 import torch
-from the_well.data.datasets import Augmentation, WellDataset
+from the_well.data import Augmentation, WellDataset
 from the_well.data.normalization import ZScoreNormalization
 from torch.utils.data import Dataset
 

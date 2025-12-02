@@ -1,4 +1,5 @@
 import torch
+from azula.nn.layers import ConvNd
 from torch import nn
 
 from auto_cast.decoders import Decoder
@@ -28,38 +29,77 @@ class VAELoss(nn.Module):
         ----------
         encoded: Tensor
             Encoded tensor containing mean and log variance.
+            Shape: [B, 2*C, H, W, ...] for spatial or
+            [B, 2*latent_dim] for flat.
 
         Returns
         -------
         Tensor
             KL divergence loss.
         """
-        if (
-            isinstance(encoded, Tensor)
-            and encoded.dim() == 2
-            and encoded.size(1) != 2 * (encoded.size(1) // 2)
-        ):
-            msg = "encoded must be [B, 2 * latent_dim]"
-            raise ValueError(msg)
-        mean, log_var = encoded.chunk(2, dim=-1)
-        kl_div = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp(), dim=-1)
+        # Split along the appropriate dimension
+        split_dim = 1 if encoded.dim() > 2 else -1
+        mean, log_var = encoded.chunk(2, dim=split_dim)
+        # Compute KL divergence, sum over all non-batch dimensions
+        kl_div = -0.5 * torch.sum(
+            1 + log_var - mean.pow(2) - log_var.exp(),
+            dim=list(range(1, encoded.dim())),
+        )
         return kl_div.mean()
 
 
 class VAE(EncoderDecoder):
-    """Variational Autoencoder Model."""
+    """Variational Autoencoder Model.
+
+    Supports both flat (B, latent_dim) and spatial (B, C, H, W, ...)
+    latent representations.
+    """
 
     encoder: Encoder
     decoder: Decoder
-    fc_mean: nn.Linear
-    fc_log_var: nn.Linear
+    fc_mean: nn.Module
+    fc_log_var: nn.Module
 
-    def __init__(self, encoder: Encoder, decoder: Decoder):
+    def __init__(self, encoder: Encoder, decoder: Decoder, spatial: int | None = None):
+        """Initialize VAE.
+
+        Parameters
+        ----------
+        encoder : Encoder
+            Encoder network.
+        decoder : Decoder
+            Decoder network.
+        spatial : int | None
+            Number of spatial dimensions in latent space (e.g., 2 for images).
+            If None, assumes flat 1D latent representation.
+        """
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
-        self.fc_mean = nn.Linear(encoder.latent_dim, encoder.latent_dim)
-        self.fc_log_var = nn.Linear(encoder.latent_dim, encoder.latent_dim)
+        self.spatial = spatial
+        latent_dim = encoder.latent_dim
+        if encoder.latent_dim != decoder.latent_dim:
+            msg = "Encoder and Decoder latent dimensions must match for VAE."
+            raise ValueError(msg)
+
+        # For spatial latents, use 1x1 convolutions; for flat, use linear
+        if spatial is not None:
+            self.fc_mean = ConvNd(
+                latent_dim,
+                latent_dim,
+                spatial=spatial,
+                kernel_size=1,
+            )
+            self.fc_log_var = ConvNd(
+                latent_dim,
+                latent_dim,
+                spatial=spatial,
+                kernel_size=1,
+            )
+        else:
+            self.fc_mean = nn.Linear(latent_dim, latent_dim)
+            self.fc_log_var = nn.Linear(latent_dim, latent_dim)
+
         self.loss_func = VAELoss()
 
     def forward(self, batch: Batch) -> Tensor:
@@ -67,14 +107,9 @@ class VAE(EncoderDecoder):
 
     def forward_with_latent(self, batch: Batch) -> tuple[Tensor, Tensor]:
         encoded = self.encode(batch)
-        if (
-            isinstance(encoded, Tensor)
-            and encoded.dim() == 2
-            and encoded.size(1) != 2 * self.encoder.latent_dim
-        ):
-            msg = "encoded must be [B, 2 * latent_dim]"
-            raise ValueError(msg)
-        mean, log_var = encoded.chunk(2, dim=-1)
+        # Split along channel dim (1) for spatial, feature dim (-1) for flat
+        split_dim = 1 if self.spatial is not None else -1
+        mean, log_var = encoded.chunk(2, dim=split_dim)
         z = self.reparametrize(mean, log_var)
         decoded = self.decode(z)
         return decoded, encoded
@@ -94,10 +129,13 @@ class VAE(EncoderDecoder):
         return mean + eps * std
 
     def encode(self, batch: Batch) -> Tensor:
-        h = super().encode(batch)  # [B, latent_dim]
-        mean = self.fc_mean(h)  # [B, latent_dim]
-        log_var = self.fc_log_var(h)  # [B, latent_dim]
-        return torch.cat([mean, log_var], dim=-1)  # [B, 2*latent_dim]
+        h = super().encode(batch)  # [B, C, H, W, ...] or [B, latent_dim]
+        mean = self.fc_mean(h)  # Same shape as h
+        log_var = self.fc_log_var(h)  # Same shape as h
+        # Concat along channel dim (1) for spatial, feature dim (-1) for flat
+        concat_dim = 1 if self.spatial is not None else -1
+        # [B, 2*C, H, W, ...] or [B, 2*latent_dim]
+        return torch.cat([mean, log_var], dim=concat_dim)
 
     def training_step(self, batch: Batch, batch_idx: int) -> Tensor:  # noqa: ARG002
         loss = self.loss_func(self, batch)

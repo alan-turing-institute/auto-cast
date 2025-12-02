@@ -10,6 +10,7 @@ class Encoder(nn.Module, ABC):
     """Base encoder."""
 
     encoder_model: nn.Module
+    latent_dim: int
 
     def encode(self, batch: Batch) -> Tensor:
         """Encode the input tensor into the latent space.

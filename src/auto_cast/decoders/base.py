@@ -10,6 +10,7 @@ class Decoder(nn.Module, ABC):
     """Base Decoder."""
 
     decoder_model: nn.Module
+    latent_dim: int
 
     def __init__(self, latent_dim: int, output_channels: int) -> None:
         super().__init__()

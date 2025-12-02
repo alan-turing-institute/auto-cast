@@ -5,16 +5,15 @@ import torch
 from torch import nn
 
 from auto_cast.models.encoder_decoder import EncoderDecoder
-from auto_cast.nn.base import Module
 from auto_cast.processors.base import Processor
-from auto_cast.types import Batch, RolloutOutput, Tensor
+from auto_cast.types import Batch, EncodedBatch, RolloutOutput, Tensor
 
 
 class EncoderProcessorDecoder(L.LightningModule):
     """Encoder-Processor-Decoder Model."""
 
     encoder_decoder: EncoderDecoder
-    processor: Processor | nn.Module
+    processor: Processor
     teacher_forcing_ratio: float
     stride: int
     max_rollout_steps: int
@@ -42,7 +41,7 @@ class EncoderProcessorDecoder(L.LightningModule):
     def from_encoder_processor_decoder(
         cls,
         encoder_decoder: EncoderDecoder,
-        processor: Processor | Module,
+        processor: Processor,
         **kwargs: Any,
     ) -> Self:
         instance = cls(**kwargs)
@@ -52,8 +51,8 @@ class EncoderProcessorDecoder(L.LightningModule):
             setattr(instance, key, value)
         return instance
 
-    def forward(self, *args: Any, **kwargs: Any) -> Any:
-        return self.decode(self.processor(self.encode(*args, **kwargs)))
+    def __call__(self, batch: Batch) -> Tensor:
+        return self.decode(self.processor(self.encode(batch)))
 
     def encode(self, x: Batch) -> Tensor:
         return self.encoder_decoder.encoder(x)
@@ -61,11 +60,11 @@ class EncoderProcessorDecoder(L.LightningModule):
     def decode(self, x: Tensor) -> Tensor:
         return self.encoder_decoder.decoder(x)
 
-    def map(self, x: Batch) -> Tensor:
-        return self.forward(x)
+    def map(self, x: EncodedBatch) -> Tensor:
+        return self.processor.map(x.encoded_inputs)
 
     def training_step(self, batch: Batch, batch_idx: int) -> Tensor:  # noqa: ARG002
-        y_pred = self.map(batch)
+        y_pred = self(batch)
         y_true = batch.output_fields
         loss = self.loss_func(y_pred, y_true)
         self.log("train_loss", loss, prog_bar=True)

@@ -1,7 +1,20 @@
+import torch
 from torch import nn, rand
 
 from auto_cast.decoders.dc import DCDecoder
 from auto_cast.encoders.dc import DCEncoder
+from auto_cast.models.ae import AE, AELoss
+from auto_cast.types import Batch
+
+
+def _make_batch(shape: tuple[int, ...], *, requires_grad: bool = False) -> Batch:
+    x = rand(*shape, requires_grad=requires_grad)
+    return Batch(
+        input_fields=x,
+        output_fields=x.clone(),
+        constant_scalars=None,
+        constant_fields=None,
+    )
 
 
 def test_ae_full_dcae_2d():
@@ -25,8 +38,9 @@ def test_ae_full_dcae_2d():
     )
 
     # Test forward pass through encoder and decoder
-    x = rand(2, 3, 64, 64)
-    z = encoder.forward(x)
+    batch = _make_batch((2, 64, 64, 3))
+    x = batch.input_fields
+    z = encoder.encode(batch)
     x_recon = decoder.forward(z)
 
     assert x_recon.shape == x.shape, f"Expected {x.shape}, got {x_recon.shape}"
@@ -56,12 +70,16 @@ def test_ae_full_dcae_3d():
     )
 
     # Test forward pass through encoder and decoder
-    x = rand(2, 4, 32, 32, 32)
-    z = encoder.forward(x)
+    batch = _make_batch((2, 32, 32, 32, 4))
+    x = batch.input_fields
+    z = encoder.encode(batch)
     x_recon = decoder.forward(z)
 
     assert x_recon.shape == x.shape, f"Expected {x.shape}, got {x_recon.shape}"
-    assert z.shape == (2, 8, 16, 16, 16), f"Expected (2, 8, 16, 16, 16), got {z.shape}"
+    expected_latent_shape = (2, 8, 16, 16, 16)
+    assert z.shape == expected_latent_shape, (
+        f"Expected {expected_latent_shape}, got {z.shape}"
+    )
     assert not x_recon.isnan().any(), "Reconstruction contains NaN values"
     assert not z.isnan().any(), "Latent contains NaN values"
 
@@ -82,11 +100,11 @@ def test_ae_hybrid_unet_dc():
     # Test forward pass with different latent sizes
     z1 = rand(2, 16, 8, 8)
     x1 = decoder.forward(z1)
-    assert x1.shape == (2, 3, 32, 32), f"Expected (2, 3, 32, 32), got {x1.shape}"
+    assert x1.shape == (2, 32, 32, 3), f"Expected (2, 32, 32, 3), got {x1.shape}"
 
     z2 = rand(2, 16, 16, 16)
     x2 = decoder.forward(z2)
-    assert x2.shape == (2, 3, 64, 64), f"Expected (2, 3, 64, 64), got {x2.shape}"
+    assert x2.shape == (2, 64, 64, 3), f"Expected (2, 64, 64, 3), got {x2.shape}"
 
     assert not x1.isnan().any(), "Output contains NaN values"
     assert not x2.isnan().any(), "Output contains NaN values"
@@ -113,8 +131,9 @@ def test_ae_pixel_shuffle():
     )
 
     # Test forward pass through encoder and decoder
-    x = rand(2, 3, 64, 64)
-    z = encoder.forward(x)
+    batch = _make_batch((2, 64, 64, 3))
+    x = batch.input_fields
+    z = encoder.encode(batch)
     x_recon = decoder.forward(z)
 
     assert x_recon.shape == x.shape, f"Expected {x.shape}, got {x_recon.shape}"
@@ -144,8 +163,9 @@ def test_ae_with_attention():
     )
 
     # Test forward pass through encoder and decoder
-    x = rand(2, 3, 64, 64)
-    z = encoder.forward(x)
+    batch = _make_batch((2, 64, 64, 3))
+    x = batch.input_fields
+    z = encoder.encode(batch)
     x_recon = decoder.forward(z)
 
     assert x_recon.shape == x.shape, f"Expected {x.shape}, got {x_recon.shape}"
@@ -173,8 +193,9 @@ def test_ae_reconstruction_loss():
     )
 
     # Test forward pass and loss computation
-    x = rand(2, 3, 64, 64)
-    z = encoder.forward(x)
+    batch = _make_batch((2, 64, 64, 3))
+    x = batch.input_fields
+    z = encoder.encode(batch)
     x_recon = decoder.forward(z)
 
     # Compute MSE loss
@@ -205,8 +226,9 @@ def test_ae_gradient_flow():
     )
 
     # Forward pass with loss
-    x = rand(2, 3, 64, 64, requires_grad=True)
-    z = encoder.forward(x)
+    batch = _make_batch((2, 64, 64, 3), requires_grad=True)
+    x = batch.input_fields
+    z = encoder.encode(batch)
     x_recon = decoder.forward(z)
     loss = nn.functional.mse_loss(x_recon, x)
     loss.backward()
@@ -263,3 +285,68 @@ def test_ae_parameter_count():
     assert n_params > 0, "Model has no parameters"
     assert n_trainable > 0, "Model has no trainable parameters"
     assert n_trainable == n_params, "Not all parameters are trainable"
+
+
+def test_ae_wrapper_forward_with_batch():
+    encoder = DCEncoder(
+        in_channels=3,
+        out_channels=16,
+        hid_channels=(32, 64),
+        spatial=2,
+        hid_blocks=(2, 2),
+        pixel_shuffle=False,
+    )
+
+    decoder = DCDecoder(
+        in_channels=16,
+        out_channels=3,
+        hid_channels=(64, 32),
+        spatial=2,
+        hid_blocks=(2, 2),
+        pixel_shuffle=False,
+    )
+
+    model = AE(encoder=encoder, decoder=decoder)
+    batch = _make_batch((2, 64, 64, 3))
+
+    output = model(batch)
+    assert output.shape == batch.output_fields.shape
+    decoded, encoded = model.forward_with_latent(batch)
+    assert torch.allclose(output, decoded)
+    assert encoded.shape[0] == batch.input_fields.shape[0]
+    assert encoded.shape[1] == encoder.latent_dim
+
+
+def test_ae_wrapper_loss_and_backward():
+    encoder = DCEncoder(
+        in_channels=3,
+        out_channels=8,
+        hid_channels=(16, 32),
+        spatial=2,
+        hid_blocks=(1, 1),
+        pixel_shuffle=False,
+    )
+
+    decoder = DCDecoder(
+        in_channels=8,
+        out_channels=3,
+        hid_channels=(32, 16),
+        spatial=2,
+        hid_blocks=(1, 1),
+        pixel_shuffle=False,
+    )
+
+    model = AE(encoder=encoder, decoder=decoder, loss_func=AELoss())
+    batch = _make_batch((2, 64, 64, 3))
+    model.train()
+
+    loss = model.loss_func(model, batch)
+    assert loss.item() >= 0
+    loss.backward()
+
+    grads_present = any(
+        param.grad is not None and not param.grad.isnan().any()
+        for param in model.parameters()
+        if param.requires_grad
+    )
+    assert grads_present, "Expected gradients on AE parameters"

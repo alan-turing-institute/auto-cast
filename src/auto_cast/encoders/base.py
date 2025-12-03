@@ -12,6 +12,14 @@ class Encoder(nn.Module, ABC):
     encoder_model: nn.Module
     latent_dim: int
 
+    def preprocess(self, batch: Batch) -> Batch:
+        """Optionally transform a batch before encoding.
+
+        Subclasses can override to implement pre-encoding steps that still
+        return a fully-populated `Batch` instance. Default is identity.
+        """
+        return batch
+
     def encode(self, batch: Batch) -> Tensor:
         """Encode the input tensor into the latent space.
 

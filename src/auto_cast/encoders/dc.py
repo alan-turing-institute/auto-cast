@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from typing import cast
 
 from azula.nn.layers import ConvNd, Patchify
+from einops import rearrange
 from torch import Tensor, nn
 
 from auto_cast.encoders.base import Encoder
@@ -168,6 +169,27 @@ class DCEncoder(Encoder):
         self.latent_dim = out_channels
         self.input_channels = in_channels
 
+    def preprocess(self, batch: Batch) -> Batch:
+        x = batch.input_fields
+        # Already channels-first
+        if x.dim() >= 2 and x.shape[1] == self.input_channels:
+            return batch
+
+        if x.shape[-1] != self.input_channels:
+            msg = (
+                "Cannot infer channel dimension for DCEncoder; expected"
+                f" {self.input_channels} but got shape {tuple(x.shape)}"
+            )
+            raise ValueError(msg)
+
+        x = rearrange(x, "B ... C -> B C ...")
+        return Batch(
+            input_fields=x,
+            output_fields=batch.output_fields,
+            constant_scalars=batch.constant_scalars,
+            constant_fields=batch.constant_fields,
+        )
+
     def encode(self, batch: Batch) -> Tensor:
         """Encode input batch to latent representation.
 
@@ -182,6 +204,7 @@ class DCEncoder(Encoder):
             Encoded latent tensor with shape (B, C_o, L_1 / 2^D, ..., L_N / 2^D).
 
         """
+        batch = self.preprocess(batch)
         x = batch.input_fields
         x = self.patch(x)
 

@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from typing import cast
 
 from azula.nn.layers import ConvNd, Unpatchify
+from einops import rearrange
 from torch import Tensor, nn
 
 from auto_cast.decoders.base import Decoder
@@ -166,6 +167,9 @@ class DCDecoder(Decoder):
 
         self.decoder_model = self.ascent
 
+    def postprocess(self, decoded: Tensor) -> Tensor:
+        return rearrange(decoded, "B C ... -> B ... C")
+
     def decode(self, z: Tensor) -> Tensor:
         """Decode latent tensor back to original space.
 
@@ -185,7 +189,7 @@ class DCDecoder(Decoder):
             for block in cast(nn.ModuleList, blocks):  # ModuleList in construction
                 x = block(x)
 
-        return self.unpatch(x)
+        return self.postprocess(self.unpatch(x))
 
     def forward(self, z: Tensor) -> Tensor:
         """Forward pass through decoder."""

@@ -1,4 +1,3 @@
-import torch
 from torch import nn
 
 from auto_cast.decoders import Decoder
@@ -20,10 +19,11 @@ class AELoss(nn.Module):
         self.weights = weights
 
     def forward(self, model: EncoderDecoder, batch: Batch) -> Tensor:
-        output = model(batch)
-        total_loss = torch.tensor(0.0)
+        decoded, _ = model.forward_with_latent(batch)
+        total_loss = decoded.new_zeros(())
+        target = batch.output_fields
         for loss, weight in zip(self.losses, self.weights, strict=True):
-            total_loss += loss(output, batch.output_fields) * weight
+            total_loss = total_loss + loss(decoded, target) * weight
         return total_loss
 
 
@@ -33,11 +33,13 @@ class AE(EncoderDecoder):
     encoder: Encoder
     decoder: Decoder
 
-    def __init__(self, encoder: Encoder, decoder: Decoder, loss_func: AELoss):
+    def __init__(
+        self, encoder: Encoder, decoder: Decoder, loss_func: AELoss | None = None
+    ):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
-        self.loss_func = loss_func
+        self.loss_func = loss_func or AELoss()
 
     def forward(self, batch: Batch) -> Tensor:
         return self.forward_with_latent(batch)[0]
@@ -46,3 +48,23 @@ class AE(EncoderDecoder):
         encoded = self.encode(batch)
         decoded = self.decode(encoded)
         return decoded, encoded
+
+    def _compute_loss(self, batch: Batch) -> Tensor:
+        return self.loss_func(self, batch)
+
+    def training_step(self, batch: Batch, batch_idx: int) -> Tensor:  # noqa: ARG002
+        loss = self._compute_loss(batch)
+        self.log(
+            "train_loss", loss, prog_bar=True, batch_size=batch.input_fields.shape[0]
+        )
+        return loss
+
+    def validation_step(self, batch: Batch, batch_idx: int) -> Tensor:  # noqa: ARG002
+        loss = self._compute_loss(batch)
+        self.log(
+            "val_loss", loss, prog_bar=True, batch_size=batch.input_fields.shape[0]
+        )
+        return loss
+
+    def test_step(self, batch: Batch, batch_idx: int) -> Tensor:  # noqa: ARG002
+        return self._compute_loss(batch)

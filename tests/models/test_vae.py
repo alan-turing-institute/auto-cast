@@ -11,6 +11,16 @@ from auto_cast.models.vae import VAE, VAELoss
 from auto_cast.types import Batch, Tensor
 
 
+def _make_batch(shape: tuple[int, ...], *, requires_grad: bool = False) -> Batch:
+    x = torch.rand(*shape, requires_grad=requires_grad)
+    return Batch(
+        input_fields=x,
+        output_fields=x.clone(),
+        constant_scalars=None,
+        constant_fields=None,
+    )
+
+
 class _FlatEncoder(Encoder):
     """Minimal encoder that produces flat (non-spatial) latents for tests."""
 
@@ -105,14 +115,9 @@ def test_vae_spatial_latents_2d():
     # Create VAE with spatial=2 for 2D spatial latents
     vae = VAE(encoder=encoder, decoder=decoder, spatial=2)
 
-    # Create a batch
-    x = torch.rand(2, 3, 64, 64)
-    batch = Batch(
-        input_fields=x,
-        output_fields=x,
-        constant_scalars=None,
-        constant_fields=None,
-    )
+    # Create a batch (channel-last)
+    batch = _make_batch((2, 64, 64, 3))
+    x = batch.output_fields
 
     # Test forward pass
     output = vae(batch)
@@ -160,14 +165,9 @@ def test_vae_spatial_latents_3d():
     # Create VAE with spatial=3 for 3D spatial latents
     vae = VAE(encoder=encoder, decoder=decoder, spatial=3)
 
-    # Create a batch
-    x = torch.rand(2, 4, 32, 32, 32)
-    batch = Batch(
-        input_fields=x,
-        output_fields=x,
-        constant_scalars=None,
-        constant_fields=None,
-    )
+    # Create a batch (channel-last)
+    batch = _make_batch((2, 32, 32, 32, 4))
+    x = batch.input_fields
 
     # Test forward pass
     output = vae(batch)
@@ -181,7 +181,7 @@ def test_vae_spatial_latents_3d():
     # Encoded should be [B, 2*C, D, H, W] where C=8
     assert encoded.shape[0] == 2, "Batch size should be 2"
     assert encoded.shape[1] == 16, f"Expected 16 channels (2*8), got {encoded.shape[1]}"
-    assert encoded.dim() == 5, "Encoded should be 5D (B, 2*C, D, H, W)"
+    assert encoded.dim() == 5, "Encoded should be 5D (B, D, H, W, 2*C)"
     assert not encoded.isnan().any(), "Encoded contains NaN values"
 
 
@@ -208,13 +208,7 @@ def test_vae_reparametrization_trick():
 
     vae = VAE(encoder=encoder, decoder=decoder, spatial=2)
 
-    x = torch.rand(2, 3, 64, 64)
-    batch = Batch(
-        input_fields=x,
-        output_fields=x,
-        constant_scalars=None,
-        constant_fields=None,
-    )
+    batch = _make_batch((2, 64, 64, 3))
 
     # In training mode, outputs should be different due to sampling
     vae.train()
@@ -323,13 +317,8 @@ def test_vae_kl_divergence():
 
     vae = VAE(encoder=encoder, decoder=decoder, spatial=2)
 
-    x = torch.rand(2, 3, 64, 64)
-    batch = Batch(
-        input_fields=x,
-        output_fields=x,
-        constant_scalars=None,
-        constant_fields=None,
-    )
+    batch = _make_batch((2, 64, 64, 3))
+    x = batch.output_fields
 
     # Get encoded representation
     decoded, encoded = vae.forward_with_latent(batch)
@@ -367,13 +356,8 @@ def test_vae_gradient_flow():
     vae = VAE(encoder=encoder, decoder=decoder, spatial=2)
     vae.train()
 
-    x = torch.rand(2, 3, 64, 64, requires_grad=True)
-    batch = Batch(
-        input_fields=x,
-        output_fields=x,
-        constant_scalars=None,
-        constant_fields=None,
-    )
+    batch = _make_batch((2, 64, 64, 3), requires_grad=True)
+    x = batch.input_fields
 
     # Forward pass with loss
     loss = vae.loss_func(vae, batch)
@@ -429,13 +413,7 @@ def test_vae_beta_parameter():
     vae2 = VAE(encoder=encoder, decoder=decoder, spatial=2)
     vae2.loss_func = VAELoss(beta=2.0)
 
-    x = torch.rand(2, 3, 64, 64)
-    batch = Batch(
-        input_fields=x,
-        output_fields=x,
-        constant_scalars=None,
-        constant_fields=None,
-    )
+    batch = _make_batch((2, 64, 64, 3))
 
     # Compute losses (both VAEs share same encoder/decoder, so same outputs)
     vae1.eval()
@@ -477,13 +455,8 @@ def test_vae_pixel_shuffle():
 
     vae = VAE(encoder=encoder, decoder=decoder, spatial=2)
 
-    x = torch.rand(2, 3, 64, 64)
-    batch = Batch(
-        input_fields=x,
-        output_fields=x,
-        constant_scalars=None,
-        constant_fields=None,
-    )
+    batch = _make_batch((2, 64, 64, 3))
+    x = batch.output_fields
 
     # Test forward pass
     output = vae(batch)
@@ -515,13 +488,8 @@ def test_vae_with_attention():
 
     vae = VAE(encoder=encoder, decoder=decoder, spatial=2)
 
-    x = torch.rand(2, 3, 64, 64)
-    batch = Batch(
-        input_fields=x,
-        output_fields=x,
-        constant_scalars=None,
-        constant_fields=None,
-    )
+    batch = _make_batch((2, 64, 64, 3))
+    x = batch.output_fields
 
     # Test forward pass
     output = vae(batch)

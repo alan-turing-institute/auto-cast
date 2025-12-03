@@ -17,6 +17,14 @@ class Decoder(nn.Module, ABC):
         self.latent_dim = latent_dim
         self.output_channels = output_channels
 
+    def postprocess(self, decoded: Tensor) -> Tensor:
+        """Optionally transform the decoded tensor before returning.
+
+        Subclasses can override to implement post-decoding steps. Default is
+        identity.
+        """
+        return decoded
+
     def decode(self, z: Tensor) -> Tensor:
         """Decode the latent tensor back to the original space.
 
@@ -35,4 +43,4 @@ class Decoder(nn.Module, ABC):
     def forward(self, *args: Any, **kwargs: Any) -> Any: ...
 
     def __call__(self, z: Tensor) -> Tensor:
-        return self.decode(z)
+        return self.postprocess(self.decode(z))

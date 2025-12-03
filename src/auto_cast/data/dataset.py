@@ -39,6 +39,7 @@ class SpatioTemporalDataset(Dataset, BatchMixin):
         input_channel_idxs: tuple[int, ...] | None = None,
         output_channel_idxs: tuple[int, ...] | None = None,
         full_trajectory_mode: bool = False,
+        autoencoder_mode: bool = False,
         dtype: torch.dtype = torch.float32,
         verbose: bool = False,
         use_normalization: bool = False,
@@ -65,6 +66,9 @@ class SpatioTemporalDataset(Dataset, BatchMixin):
             Indices of output channels to use. Defaults to None.
         full_trajectory_mode: bool
             If True, use full trajectories without creating subtrajectories.
+        autoencoder_mode: bool
+            If True, return (input, input) pairs for autoencoder training.
+            Defaults to False.
         dtype: torch.dtype
             Data type for tensors. Defaults to torch.float32.
         verbose: bool
@@ -78,18 +82,30 @@ class SpatioTemporalDataset(Dataset, BatchMixin):
         self.verbose = verbose
         self.use_normalization = use_normalization
         self.norm = norm
+        self.autoencoder_mode = autoencoder_mode
 
-        # Read or parse data
-        self.read_data(data_path) if data_path is not None else self.parse_data(data)
+        if data_path is not None:
+            self.read_data(data_path)
+        # TODO: consider ensuring only one passed and not overridden
+        if data is not None:
+            self.parse_data(data)
+
+        if autoencoder_mode and full_trajectory_mode:
+            msg = "autoencoder_mode and full_trajectory_mode cannot both be True."
+            raise ValueError(msg)
+        if autoencoder_mode:
+            # In autoencoder mode, input and output steps are overridde
+            n_steps_input = 1
+            n_steps_output = 0
+        if full_trajectory_mode:
+            n_steps_input = self.data.shape[1]
+            # TODO: make more robust and flexible for different trajectory lengths
+            n_steps_output = self.data.shape[1] - n_steps_input
 
         self.full_trajectory_mode = full_trajectory_mode
+        self.autoencoder_mode = autoencoder_mode
         self.n_steps_input = n_steps_input
-        self.n_steps_output = (
-            n_steps_output
-            if not self.full_trajectory_mode
-            # TODO: make more robust and flexible for different trajectory lengths
-            else self.data.shape[1] - self.n_steps_input
-        )
+        self.n_steps_output = n_steps_output
         self.stride = stride
         self.input_channel_idxs = input_channel_idxs
         self.output_channel_idxs = output_channel_idxs
@@ -109,21 +125,23 @@ class SpatioTemporalDataset(Dataset, BatchMixin):
         self.all_constant_scalars = []
         self.all_constant_fields = []
 
+        # Create input-output pairs
         for traj_idx in range(self.n_trajectories):
             # Create subtrajectories for this trajectory
             fields = (
                 self.data[traj_idx]
                 .unfold(0, self.n_steps_input + self.n_steps_output, self.stride)
-                .permute(0, -1, 1, 2, 3)  # [num_subtrajectories, T_in + T_out, W, H, C]
+                # [num_subtrajectories, T_in + T_out, W, H, C]
+                .permute(0, -1, 1, 2, 3)
             )
 
             # Split into input and output
-            input_fields = fields[
-                :, : self.n_steps_input, ...
-            ]  # [num_subtrajectories, T_in, W, H, C]
-            output_fields = fields[
-                :, self.n_steps_input :, ...
-            ]  # [num_subtrajectories, T_out, W, H, C]
+            input_fields = fields[:, : self.n_steps_input, ...]
+            output_fields = (
+                fields[:, self.n_steps_input :, ...]
+                if not self.autoencoder_mode
+                else input_fields
+            )
 
             # Store each subtrajectory separately
             for sub_idx in range(input_fields.shape[0]):
@@ -204,7 +222,9 @@ class SpatioTemporalDataset(Dataset, BatchMixin):
 
     def __getitem__(self, idx):  # noqa: D105
         input_fields = self.all_input_fields[idx]
-        output_fields = self.all_output_fields[idx]
+        output_fields = (
+            input_fields if self.autoencoder_mode else self.all_output_fields[idx]
+        )
 
         item = {
             "input_fields": input_fields,
@@ -323,13 +343,23 @@ class TheWell(SpatioTemporalDataset):
         return_grid: bool = True,
         boundary_return_type: str = "padding",
         full_trajectory_mode: bool = False,
+        autoencoder_mode: bool = False,
         name_override: None | str = None,
         transform: None | Augmentation = None,
         min_std: float = 1e-4,
         storage_options: None | dict = None,
     ):
+        super().__init__(
+            data_path=None,
+            n_steps_input=n_steps_input,
+            n_steps_output=n_steps_output,
+            full_trajectory_mode=full_trajectory_mode,
+            autoencoder_mode=autoencoder_mode,
+            use_normalization=use_normalization,
+        )
         exclude_filters = exclude_filters or []
         include_filters = include_filters or []
+        self.autoencoder_mode = autoencoder_mode
         self.well_dataset = WellDataset(
             path=path,
             normalization_path=normalization_path,
@@ -342,7 +372,7 @@ class TheWell(SpatioTemporalDataset):
             normalization_type=normalization_type,
             max_rollout_steps=max_rollout_steps,
             n_steps_input=n_steps_input,
-            n_steps_output=n_steps_output,
+            n_steps_output=n_steps_output if not autoencoder_mode else 0,
             min_dt_stride=min_dt_stride,
             max_dt_stride=max_dt_stride,
             flatten_tensors=flatten_tensors,
@@ -359,4 +389,8 @@ class TheWell(SpatioTemporalDataset):
         self.well_metadata = self.well_dataset.metadata
 
     def __getitem__(self, index) -> Batch:  # noqa: D105
-        return self.to_batch(self.well_dataset.__getitem__(index))
+        data = self.well_dataset.__getitem__(index)
+        if self.autoencoder_mode:
+            # Replace output_fields with input_fields for autoencoder training
+            data["output_fields"] = data["input_fields"]
+        return self.to_batch(data)

@@ -105,9 +105,12 @@ class DCEncoder(Encoder):
         }
 
         self.patch = Patchify(patch_shape=tuple(patch_size))
-        self.descent = nn.ModuleList()
+        self.latent_dim = out_channels
+        self.input_channels = in_channels
 
         # Build encoder from shallowest to deepest
+        self.descent = nn.ModuleList()
+
         for i, num_blocks in enumerate(hid_blocks):
             blocks = nn.ModuleList()
 
@@ -164,10 +167,7 @@ class DCEncoder(Encoder):
 
             self.descent.append(blocks)
 
-        # Store model reference for compatibility
         self.encoder_model = self.descent
-        self.latent_dim = out_channels
-        self.input_channels = in_channels
 
     def preprocess(self, batch: Batch) -> Batch:
         x = batch.input_fields

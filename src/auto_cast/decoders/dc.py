@@ -105,9 +105,9 @@ class DCDecoder(Decoder):
         }
 
         self.unpatch = Unpatchify(patch_shape=tuple(patch_size))
-        self.ascent = nn.ModuleList()
 
         # Build decoder from deepest to shallowest
+        self.ascent = nn.ModuleList()
         for i, num_blocks in reversed(list(enumerate(hid_blocks))):
             blocks = nn.ModuleList()
 

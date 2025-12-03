@@ -129,12 +129,10 @@ class VAE(EncoderDecoder):
         return mean + eps * std
 
     def encode(self, batch: Batch) -> Tensor:
-        h = super().encode(batch)  # [B, C, H, W, ...] or [B, latent_dim]
-        mean = self.fc_mean(h)  # Same shape as h
-        log_var = self.fc_log_var(h)  # Same shape as h
-        # Concat along channel dim (1) for spatial, feature dim (-1) for flat
+        h = self.encoder.encode(batch)  # not super().encode
+        mean = self.fc_mean(h)
+        log_var = self.fc_log_var(h)
         concat_dim = 1 if self.spatial is not None else -1
-        # [B, 2*C, H, W, ...] or [B, 2*latent_dim]
         return torch.cat([mean, log_var], dim=concat_dim)
 
     def training_step(self, batch: Batch, batch_idx: int) -> Tensor:  # noqa: ARG002

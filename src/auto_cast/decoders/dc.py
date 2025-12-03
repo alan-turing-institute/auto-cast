@@ -164,8 +164,7 @@ class DCDecoder(Decoder):
 
             self.ascent.append(blocks)
 
-        # Store decoder_model reference for compatibility
-        self.decoder_model = self
+        self.decoder_model = self.ascent
 
     def decode(self, z: Tensor) -> Tensor:
         """Decode latent tensor back to original space.

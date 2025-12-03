@@ -164,7 +164,7 @@ class DCEncoder(Encoder):
             self.descent.append(blocks)
 
         # Store model reference for compatibility
-        self.encoder_model = self
+        self.encoder_model = self.descent
         self.latent_dim = out_channels
         self.input_channels = in_channels
 

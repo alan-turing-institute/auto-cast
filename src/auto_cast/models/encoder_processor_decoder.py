@@ -50,21 +50,21 @@ class EncoderProcessorDecoder(L.LightningModule):
         return torch.stack(pred_outs), torch.stack(gt_outs)
 
 
-# TODO: consider if separate rollout class would be better
-class Rollout:
-    max_rollout_steps: int
-    stride: int
+# # TODO: consider if separate rollout class would be better
+# class Rollout:
+#     max_rollout_steps: int
+#     stride: int
 
-    def rollout(
-        self,
-        batch: Batch,
-        model: Processor | EncoderProcessorDecoder,
-    ) -> RolloutOutput:
-        """Rollout over multiple time steps."""
-        pred_outs, gt_outs = [], []
-        for _ in range(0, self.max_rollout_steps, self.stride):
-            output = model(batch)
-            pred_outs.append(output)
-            # TODO: logic for moving window with teacher forcing that assigns
-            gt_outs.append(batch.output_fields)  # This assumes we have output fields
-        return torch.stack(pred_outs), torch.stack(gt_outs)
+#     def rollout(
+#         self,
+#         batch: Batch,
+#         model: Processor | EncoderProcessorDecoder,
+#     ) -> RolloutOutput:
+#         """Rollout over multiple time steps."""
+#         pred_outs, gt_outs = [], []
+#         for _ in range(0, self.max_rollout_steps, self.stride):
+#             output = model(batch)
+#             pred_outs.append(output)
+#             # TODO: logic for moving window with teacher forcing that assigns
+#             gt_outs.append(batch.output_fields)  # This assumes we have output fields
+#         return torch.stack(pred_outs), torch.stack(gt_outs)

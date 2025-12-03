@@ -14,6 +14,8 @@ RolloutOutput = tuple[Tensor, None] | tuple[Tensor, Tensor]
 # TODO: Could be a dataclass if we want more structure
 @dataclass
 class Batch:
+    """A batch in input data space."""
+
     input_fields: Tensor
     output_fields: Tensor
     constant_scalars: Tensor
@@ -22,6 +24,8 @@ class Batch:
 
 @dataclass
 class EncodedBatch:
+    """A batch after being processed by an Encoder."""
+
     encoded_inputs: Tensor
     encoded_output_fields: Tensor
     encoded_info: dict[str, Tensor]

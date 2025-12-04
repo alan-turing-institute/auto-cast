@@ -10,7 +10,7 @@ from auto_cast.encoders.dc import DCEncoder
 from auto_cast.models.vae import VAE, VAELoss
 from auto_cast.types import (
     Batch,
-    TensorBMultiL,
+    TensorBMStarL,
     TensorBSPlusC,
     TensorBTCHW,
     TensorBTSPlusC,
@@ -79,7 +79,7 @@ class _FlatDecoder(Decoder):
     def decode(self, z: TensorBTSStarC) -> TensorBTSStarC:
         outputs = []
         for idx in range(z.shape[1]):
-            z_t: TensorBMultiL = z[:, idx, ...]  # (B, C)
+            z_t: TensorBMStarL = z[:, idx, ...]  # (B, C)
             outputs.append(self.net(z_t))
         return torch.stack(outputs, dim=1)  # (B, T, C)
 
@@ -123,7 +123,7 @@ class _FlatteningDecoder(Decoder):
     def decode(self, z: TensorBTSStarC) -> TensorBTCHW:
         outputs = []
         for idx in range(z.shape[1]):
-            z_t: TensorBMultiL = z[:, idx, ...]  # (B, latent_dim)
+            z_t: TensorBMStarL = z[:, idx, ...]  # (B, latent_dim)
             x_t = self.net(z_t)
             outputs.append(x_t.view(-1, *self.output_shape))
         return torch.stack(outputs, dim=1)  # (B, T, C, H, W)

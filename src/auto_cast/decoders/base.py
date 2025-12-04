@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 from torch import nn
 
-from auto_cast.types import Tensor, TensorBMultiL, TensorBTSPlusC
+from auto_cast.types import Tensor, TensorBMStarL, TensorBTSPlusC
 
 
 class Decoder(nn.Module, ABC):
@@ -25,7 +25,7 @@ class Decoder(nn.Module, ABC):
         return decoded
 
     @abstractmethod
-    def decode(self, z: TensorBMultiL) -> TensorBTSPlusC:
+    def decode(self, z: TensorBMStarL) -> TensorBTSPlusC:
         """Decode the latent tensor back to the original space.
 
         Parameters
@@ -38,5 +38,5 @@ class Decoder(nn.Module, ABC):
             Tensor: Decoded tensor in the original space.
         """
 
-    def __call__(self, z: TensorBMultiL) -> TensorBTSPlusC:
+    def __call__(self, z: TensorBMStarL) -> TensorBTSPlusC:
         return self.decode(z)

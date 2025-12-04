@@ -6,7 +6,7 @@ from torch import nn
 from auto_cast.decoders import Decoder
 from auto_cast.encoders import Encoder
 from auto_cast.models.encoder_decoder import EncoderDecoder
-from auto_cast.types import Batch, Tensor, TensorBMultiL, TensorBTSPlusC
+from auto_cast.types import Batch, Tensor, TensorBMStarL, TensorBTSPlusC
 
 
 class VAELoss(nn.Module):
@@ -24,7 +24,7 @@ class VAELoss(nn.Module):
             decoded, batch.output_fields
         )
 
-    def kl_divergence(self, encoded: TensorBMultiL) -> Tensor:
+    def kl_divergence(self, encoded: TensorBMStarL) -> Tensor:
         """Compute the KL divergence loss.
 
         Parameters
@@ -107,7 +107,7 @@ class VAE(EncoderDecoder):
     def forward(self, batch: Batch) -> TensorBTSPlusC:
         return self.forward_with_latent(batch)[0]
 
-    def forward_with_latent(self, batch: Batch) -> tuple[TensorBTSPlusC, TensorBMultiL]:
+    def forward_with_latent(self, batch: Batch) -> tuple[TensorBTSPlusC, TensorBMStarL]:
         encoded = self.encode(batch)
         # Split along channel dim (last dim)
         mean, log_var = encoded.chunk(2, dim=-1)
@@ -116,8 +116,8 @@ class VAE(EncoderDecoder):
         return decoded, encoded
 
     def reparametrize(
-        self, mean: TensorBMultiL, log_var: TensorBMultiL
-    ) -> TensorBMultiL:
+        self, mean: TensorBMStarL, log_var: TensorBMStarL
+    ) -> TensorBMStarL:
         """Reparameterisation trick.
 
         Samples z ~ N(mean, sigma) during training, but returns the mean
@@ -131,7 +131,7 @@ class VAE(EncoderDecoder):
         eps = torch.randn_like(std)
         return mean + eps * std
 
-    def encode(self, batch: Batch) -> TensorBMultiL:
+    def encode(self, batch: Batch) -> TensorBMStarL:
         # Shape: (B, T, spatial..., C) or (B, T, C) for flat
         h = self.encoder.encode(batch)
 

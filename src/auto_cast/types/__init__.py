@@ -5,6 +5,7 @@ import torch
 from jaxtyping import Float
 from torch.utils.data import DataLoader
 
+# Alias for torch.Tensor
 Tensor = torch.Tensor
 
 # Type hints for various tensor shapes:
@@ -13,35 +14,41 @@ Tensor = torch.Tensor
 # - S: spatial dimension (could be multiple spatial dims)
 # - C: channel dimension
 # - L: latent dimension
+# - M: indicates multiple combined dimensions (e.g. spatiotemporal)
 # - Star (*): indicates zero or more dimensions
 # - Plus (+): indicates one or more dimensions
-# - Multi: indicates zero or more combined dimensions
+
+# Only batch and channel
 TensorBC = Float[Tensor, "batch channel"]
-TensorBMultiC = Float[Tensor, "batch *spatiotemporal channel"]
-TensorBMultiL = Float[Tensor, "batch *spatiotemporal latent"]
+
+# Combined optional spatiotemporal
+TensorBMStarC = Float[Tensor, "batch *spatiotemporal channel"]
+TensorBMStarL = Float[Tensor, "batch *spatiotemporal latent"]
+
+# Separated spatiotemporal
 TensorBTSStarC = Float[Tensor, "batch time *spatial channel"]
+TensorBTSPlusC = Float[Tensor, "batch time spatial *spatial channel"]
 TensorBTWHC = Float[Tensor, "batch time width height channel"]
 TensorBTWHDC = Float[Tensor, "batch time width height depth channel"]
-# 1 or more spatial dims supported by pattern: "spatial *spatial"
-TensorBTSPlusC = Float[Tensor, "batch time spatial *spatial channel"]
+TensorBTCHW = Float[Tensor, "batch time channel height width"]
 TensorBCTWH = Float[Tensor, "batch channel time width height"]
 TensorBCTWHD = Float[Tensor, "batch channel time width height depth"]
 TensorBCTHW = Float[Tensor, "batch channel time height width"]
 TensorBCTSPlus = Float[Tensor, "batch channel time spatial *spatial"]
+
+# Spatial only (no time dimension)
 TensorBCSPlus = Float[Tensor, "batch channel spatial *spatial"]
 TensorBWHC = Float[Tensor, "batch width height channel"]
 TensorBWHDC = Float[Tensor, "batch width height depth channel"]
 TensorBSPlusC = Float[Tensor, "batch spatial *spatial channel"]
-TensorBTCHW = Float[Tensor, "batch time channel height width"]
 
+# Generic input type
 Input = Tensor | DataLoader
+
+# Rollout output type
 RolloutOutput = tuple[Tensor, None] | tuple[Tensor, Tensor]
 
-# Batch = dict[str, Tensor]
-# EncodedBatch = dict[str, Tensor]
 
-
-# TODO: Could be a dataclass if we want more structure
 @dataclass
 class Batch:
     """A batch in input data space."""

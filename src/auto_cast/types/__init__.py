@@ -10,10 +10,14 @@ Tensor = torch.Tensor
 TensorBC = Float[Tensor, "batch channel"]
 TensorBTWHC = Float[Tensor, "batch time width height channel"]
 TensorBTWHLC = Float[Tensor, "batch time width height length channel"]
+TensorBTSC = Float[Tensor, "batch time *spatial channel"]
 TensorBCTWH = Float[Tensor, "batch channel time width height"]
 TensorBCTWHL = Float[Tensor, "batch channel time width height length"]
 TensorBCTHW = Float[Tensor, "batch channel time height width"]
+TensorBCTS = Float[Tensor, "batch channel time *spatial"]
 TensorBWHC = Float[Tensor, "batch width height channel"]
+TensorBWHLC = Float[Tensor, "batch width height length channel"]
+TensorBSC = Float[Tensor, "batch *spatial channel"]
 
 Input = Tensor | DataLoader
 RolloutOutput = tuple[Tensor, None] | tuple[Tensor, Tensor]
@@ -27,30 +31,19 @@ RolloutOutput = tuple[Tensor, None] | tuple[Tensor, Tensor]
 class Batch:
     """A batch in input data space."""
 
-    input_fields: TensorBTWHC | TensorBTWHLC
-    output_fields: TensorBTWHC | TensorBTWHLC
+    input_fields: TensorBTSC
+    output_fields: TensorBTSC
     constant_scalars: TensorBC | None
-    constant_fields: TensorBWHC | None
+    constant_fields: TensorBSC | None
 
 
 @dataclass
 class EncodedBatch:
     """A batch after being processed by an Encoder."""
 
-    encoded_inputs: Tensor
-    encoded_output_fields: Tensor
+    encoded_inputs: TensorBTSC
+    encoded_output_fields: TensorBTSC
     encoded_info: dict[str, Tensor]
-
-
-class EncoderForBatch:
-    """EncoderForBatch."""
-
-    def __call__(self, batch: Batch) -> EncodedBatch:
-        return EncodedBatch(
-            encoded_inputs=batch.input_fields,
-            encoded_output_fields=batch.output_fields,
-            encoded_info={},
-        )
 
 
 def collate_batches(samples: Sequence[Batch]) -> Batch:

@@ -1,6 +1,8 @@
 from einops import rearrange
 from torch import Tensor, nn
 
+from auto_cast.types import TensorBCSPlus
+
 
 class SpatialAttentionWrapper(nn.Module):
     """Wrapper to handle spatial dimensions for MultiheadSelfAttention.
@@ -23,7 +25,7 @@ class SpatialAttentionWrapper(nn.Module):
         self.attention = attention_module
         self.spatial = spatial
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: TensorBCSPlus) -> TensorBCSPlus:
         """Forward pass handling spatial dimension transformation.
 
         Parameters

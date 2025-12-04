@@ -1,12 +1,10 @@
-from typing import Any
-
 import lightning as L
 import torch
 from torch import nn
 
 from auto_cast.decoders import Decoder
 from auto_cast.encoders import Encoder
-from auto_cast.types import Batch, Tensor
+from auto_cast.types import Batch, Tensor, TensorBMStarL, TensorBTSPlusC
 
 
 class EncoderDecoder(L.LightningModule):
@@ -20,10 +18,10 @@ class EncoderDecoder(L.LightningModule):
     def __init__(self):
         super().__init__()
 
-    def forward(self, *args: Any, **kwargs: Any) -> Any:
-        return self.decoder(self.encoder(*args, **kwargs))
+    def forward(self, batch: Batch) -> TensorBTSPlusC:
+        return self.decoder(self.encoder(batch))
 
-    def forward_with_latent(self, batch: Batch) -> tuple[Tensor, Tensor]:
+    def forward_with_latent(self, batch: Batch) -> tuple[TensorBTSPlusC, TensorBMStarL]:
         encoded = self.encode(batch)
         decoded = self.decode(encoded)
         return decoded, encoded
@@ -44,16 +42,13 @@ class EncoderDecoder(L.LightningModule):
         )
         return loss
 
-    def test_step(self, batch: Batch, batch_idx: int) -> Tensor:  # noqa: ARG002
+    def predict_step(self, batch: Batch, batch_idx: int) -> TensorBTSPlusC:  # noqa: ARG002
         return self(batch)
 
-    def predict_step(self, batch: Batch, batch_idx: int) -> Tensor:  # noqa: ARG002
-        return self(batch)
-
-    def encode(self, batch: Batch) -> Tensor:
+    def encode(self, batch: Batch) -> TensorBMStarL:
         return self.encoder.encode(batch)
 
-    def decode(self, z: Tensor) -> Tensor:
+    def decode(self, z: TensorBMStarL) -> TensorBTSPlusC:
         return self.decoder.decode(z)
 
     def configure_optimizers(self):

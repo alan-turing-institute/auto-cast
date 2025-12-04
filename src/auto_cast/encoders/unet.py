@@ -1,5 +1,4 @@
 from collections.abc import Sequence
-from typing import Any
 
 from azula.nn.unet import UNet
 from torch import nn
@@ -54,8 +53,8 @@ class UNetEncoder(Encoder):
         x = batch.input_fields
         return self.encoder_model(x)
 
-    def forward(self, *args: Any, **kwargs: Any) -> Any:
-        return self.encoder_model(*args, **kwargs)
+    def forward(self, x: Tensor) -> Tensor:
+        return self.encoder_model(x)
 
-    def __call__(self, batch: Batch) -> Any:
+    def __call__(self, batch: Batch) -> Tensor:
         return self.encode(batch)

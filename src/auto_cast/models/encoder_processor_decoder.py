@@ -1,12 +1,10 @@
-from typing import Any
-
 import lightning as L
 import torch
 from torch import nn
 
 from auto_cast.models.encoder_decoder import EncoderDecoder
 from auto_cast.processors.base import Processor
-from auto_cast.types import Batch, RolloutOutput, Tensor
+from auto_cast.types import Batch, RolloutOutput, Tensor, TensorBTSPlusC
 
 
 class EncoderProcessorDecoder(L.LightningModule):
@@ -27,9 +25,9 @@ class EncoderProcessorDecoder(L.LightningModule):
         self.encoder_decoder = encoder_decoder
         self.processor = processor
 
-    def forward(self, *args: Any, **kwargs: Any) -> Any:
+    def forward(self, batch: Batch) -> TensorBTSPlusC:
         return self.encoder_decoder.decoder(
-            self.processor(self.encoder_decoder.encoder(*args, **kwargs))
+            self.processor(self.encoder_decoder.encoder(batch))
         )
 
     def training_step(self, batch: Batch, batch_idx: int) -> Tensor:  # noqa: ARG002

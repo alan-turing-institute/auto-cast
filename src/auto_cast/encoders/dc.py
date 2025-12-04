@@ -5,12 +5,12 @@ from typing import cast
 import torch
 from azula.nn.layers import ConvNd, Patchify
 from einops import rearrange
-from torch import Tensor, nn
+from torch import nn
 
 from auto_cast.encoders.base import Encoder
 from auto_cast.nn import ResBlock
 from auto_cast.nn.dc_utils import build_sample_block
-from auto_cast.types import Batch
+from auto_cast.types import Batch, TensorBTSPlusC
 
 
 class DCEncoder(Encoder):
@@ -172,7 +172,6 @@ class DCEncoder(Encoder):
 
     def preprocess(self, batch: Batch) -> Batch:
         x = batch.input_fields
-        # Rearrange from (B, T, spatial..., C) to (B, C, T, spatial...)
         x = rearrange(x, "B T ... C -> B C T ...")
         return Batch(
             input_fields=x,
@@ -181,7 +180,7 @@ class DCEncoder(Encoder):
             constant_fields=batch.constant_fields,
         )
 
-    def encode(self, batch: Batch) -> Tensor:
+    def encode(self, batch: Batch) -> TensorBTSPlusC:
         """Encode input batch to latent representation.
 
         Parameters
@@ -204,22 +203,22 @@ class DCEncoder(Encoder):
                 for block in cast(nn.ModuleList, blocks):  # ModuleList in construction
                     x = block(x)
             outputs.append(x)
-        # Stack outputs: (B, C, spatial...) -> (B, T, C, spatial...)
-        # Then rearrange to (B, T, spatial..., C)
+
+        # Stack outputs along time dimension
         stacked = torch.stack(outputs, dim=1)  # (B, T, C, spatial...)
         return rearrange(stacked, "B T C ... -> B T ... C")
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: TensorBTSPlusC) -> TensorBTSPlusC:
         """Forward pass through encoder (for direct tensor input).
 
         Parameters
         ----------
-        x: Tensor
-            Input tensor with shape (B, C_i, L_1, ..., L_N).
+        x: TensorBTSPlusC
+            Input tensor with shape (B, T, spatial..., C_i).
 
         Returns
         -------
-        Tensor
+        TensorBTSPlusC
             Encoded latent tensor.
 
         """
@@ -228,8 +227,7 @@ class DCEncoder(Encoder):
         for blocks in self.descent:
             for block in cast(nn.ModuleList, blocks):
                 x = block(x)
-
         return x
 
-    def __call__(self, batch: Batch) -> Tensor:
+    def __call__(self, batch: Batch) -> TensorBTSPlusC:
         return self.encode(batch)

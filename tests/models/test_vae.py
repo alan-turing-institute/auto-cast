@@ -8,7 +8,14 @@ from auto_cast.decoders.dc import DCDecoder
 from auto_cast.encoders.base import Encoder
 from auto_cast.encoders.dc import DCEncoder
 from auto_cast.models.vae import VAE, VAELoss
-from auto_cast.types import Batch, Tensor
+from auto_cast.types import (
+    Batch,
+    TensorBMStarL,
+    TensorBSPlusC,
+    TensorBTCHW,
+    TensorBTSPlusC,
+    TensorBTSStarC,
+)
 
 
 def _make_batch(shape: tuple[int, ...], *, requires_grad: bool = False) -> Batch:
@@ -45,16 +52,16 @@ class _FlatEncoder(Encoder):
             nn.Linear(2 * input_dim, latent_dim),
         )
 
-    def encode(self, batch: Batch) -> Tensor:
+    def encode(self, batch: Batch) -> TensorBTSStarC:
         x = batch.input_fields  # (B, T, ..., C)
         # Process each time step
         outputs = []
         for idx in range(x.shape[1]):
             x_t = x[:, idx, ...]  # (B, ..., C) or (B, C) for flat
             outputs.append(self.net(x_t))
-        return torch.stack(outputs, dim=1)  # (B, T, C)
+        return torch.stack(outputs, dim=1)
 
-    def forward(self, batch: Batch) -> Tensor:  # pragma: no cover
+    def forward(self, batch: Batch) -> TensorBTSStarC:
         return self.encode(batch)
 
 
@@ -69,11 +76,10 @@ class _FlatDecoder(Decoder):
             nn.Linear(2 * latent_dim, output_dim),
         )
 
-    def decode(self, z: Tensor) -> Tensor:
-        # z is (B, T, C)
+    def decode(self, z: TensorBTSStarC) -> TensorBTSStarC:
         outputs = []
         for idx in range(z.shape[1]):
-            z_t = z[:, idx, ...]  # (B, C)
+            z_t: TensorBMStarL = z[:, idx, ...]  # (B, C)
             outputs.append(self.net(z_t))
         return torch.stack(outputs, dim=1)  # (B, T, C)
 
@@ -92,11 +98,11 @@ class _FlatteningEncoder(Encoder):
             nn.Linear(2 * in_features, latent_dim),
         )
 
-    def encode(self, batch: Batch) -> Tensor:
-        x = batch.input_fields  # (B, T, spatial..., C)
+    def encode(self, batch: Batch) -> TensorBTSStarC:
+        x: TensorBTSPlusC = batch.input_fields  # (B, T, spatial..., C)
         outputs = []
         for idx in range(x.shape[1]):
-            x_t = x[:, idx, ...]  # (B, spatial..., C)
+            x_t: TensorBSPlusC = x[:, idx, ...]  # (B, spatial..., C)
             outputs.append(self.net(x_t))
         return torch.stack(outputs, dim=1)  # (B, T, latent_dim)
 
@@ -114,11 +120,10 @@ class _FlatteningDecoder(Decoder):
             nn.Linear(2 * latent_dim, out_features),
         )
 
-    def decode(self, z: Tensor) -> Tensor:
-        # z is (B, T, latent_dim)
+    def decode(self, z: TensorBTSStarC) -> TensorBTCHW:
         outputs = []
         for idx in range(z.shape[1]):
-            z_t = z[:, idx, ...]  # (B, latent_dim)
+            z_t: TensorBMStarL = z[:, idx, ...]  # (B, latent_dim)
             x_t = self.net(z_t)
             outputs.append(x_t.view(-1, *self.output_shape))
         return torch.stack(outputs, dim=1)  # (B, T, C, H, W)
@@ -264,7 +269,7 @@ def test_vae_reparametrization_trick():
 
 
 def test_vae_flat_latents():
-    """Ensure VAE handles non-spatial (flat) latent representations."""
+    """Ensure VAE handles flat latent representations with minimal spatial input."""
 
     input_dim = 12
     latent_dim = 4
@@ -272,7 +277,8 @@ def test_vae_flat_latents():
     decoder = _FlatDecoder(latent_dim=latent_dim, output_dim=input_dim)
     vae = VAE(encoder=encoder, decoder=decoder, spatial=None)
 
-    x = torch.rand(5, 2, input_dim)  # Add time dimension (B, T, C)
+    # Use (B, T, 1, C) to satisfy TensorBTSC requirement of at least 1 spatial dim
+    x = torch.rand(5, 2, 1, input_dim)  # (B, T, spatial, C)
     batch = Batch(
         input_fields=x,
         output_fields=x,
@@ -280,12 +286,13 @@ def test_vae_flat_latents():
         constant_fields=None,
     )
 
-    # Forward paths should preserve flat shapes
+    # Forward paths should preserve shapes
     output = vae(batch)
     assert output.shape == x.shape
     decoded, encoded = vae.forward_with_latent(batch)
     assert decoded.shape == x.shape
-    assert encoded.shape == (x.shape[0], x.shape[1], 2 * latent_dim)  # (B, T, 2*C)
+    # Encoded should be (B, T, 1, 2*latent_dim) since spatial dim is preserved
+    assert encoded.shape == (x.shape[0], x.shape[1], 1, 2 * latent_dim)
 
     # Stochastic sampling only during training for flat latents
     vae.train()

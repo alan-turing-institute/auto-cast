@@ -6,7 +6,7 @@ from torch import nn
 from auto_cast.decoders import Decoder
 from auto_cast.encoders import Encoder
 from auto_cast.models.encoder_decoder import EncoderDecoder
-from auto_cast.types import Batch, Tensor
+from auto_cast.types import Batch, Tensor, TensorBMStarL, TensorBTSPlusC
 
 
 class VAELoss(nn.Module):
@@ -17,13 +17,14 @@ class VAELoss(nn.Module):
         self.beta = beta
 
     def forward(self, model: EncoderDecoder, batch: Batch) -> Tensor:
+        """Compute VAE loss as reconstruction loss + beta * KL divergence."""
         decoded, encoded = model.forward_with_latent(batch)
 
         return self.beta * self.kl_divergence(encoded) + nn.functional.mse_loss(
             decoded, batch.output_fields
         )
 
-    def kl_divergence(self, encoded: Tensor) -> Tensor:
+    def kl_divergence(self, encoded: TensorBMStarL) -> Tensor:
         """Compute the KL divergence loss.
 
         Parameters
@@ -103,10 +104,10 @@ class VAE(EncoderDecoder):
 
         self.loss_func = VAELoss()
 
-    def forward(self, batch: Batch) -> Tensor:
+    def forward(self, batch: Batch) -> TensorBTSPlusC:
         return self.forward_with_latent(batch)[0]
 
-    def forward_with_latent(self, batch: Batch) -> tuple[Tensor, Tensor]:
+    def forward_with_latent(self, batch: Batch) -> tuple[TensorBTSPlusC, TensorBMStarL]:
         encoded = self.encode(batch)
         # Split along channel dim (last dim)
         mean, log_var = encoded.chunk(2, dim=-1)
@@ -114,7 +115,9 @@ class VAE(EncoderDecoder):
         decoded = self.decode(z)
         return decoded, encoded
 
-    def reparametrize(self, mean: Tensor, log_var: Tensor) -> Tensor:
+    def reparametrize(
+        self, mean: TensorBMStarL, log_var: TensorBMStarL
+    ) -> TensorBMStarL:
         """Reparameterisation trick.
 
         Samples z ~ N(mean, sigma) during training, but returns the mean
@@ -128,10 +131,9 @@ class VAE(EncoderDecoder):
         eps = torch.randn_like(std)
         return mean + eps * std
 
-    def encode(self, batch: Batch) -> Tensor:
-        h = self.encoder.encode(
-            batch
-        )  # Shape: (B, T, spatial..., C) or (B, T, C) for flat
+    def encode(self, batch: Batch) -> TensorBMStarL:
+        # Shape: (B, T, spatial..., C) or (B, T, C) for flat
+        h = self.encoder.encode(batch)
 
         # Check if latent is spatial (has spatial dims) or flat
         is_spatial = self.spatial is not None and h.dim() > 3

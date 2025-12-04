@@ -9,7 +9,7 @@ from auto_cast.processors.rollout import RolloutMixin
 from auto_cast.types import EncodedBatch, RolloutOutput, Tensor
 
 
-class Processor(RolloutMixin[EncodedBatch], L.LightningModule):
+class Processor(RolloutMixin[EncodedBatch], ABC, L.LightningModule):
     """Processor Base Class."""
 
     def __init__(
@@ -29,6 +29,8 @@ class Processor(RolloutMixin[EncodedBatch], L.LightningModule):
         for key, value in kwargs.items():
             setattr(self, key, value)
 
+    learning_rate: float
+
     def forward(self, *args, **kwargs: Any) -> Any:
         """Forward pass through the Processor."""
         msg = "To implement."
@@ -37,13 +39,30 @@ class Processor(RolloutMixin[EncodedBatch], L.LightningModule):
     def training_step(self, batch: EncodedBatch, batch_idx: int) -> Tensor:  # noqa: ARG002
         output = self.map(batch.encoded_inputs)
         loss = self.loss_func(output, batch.encoded_output_fields)
-        return loss  # noqa: RET504
+        self.log(
+            "train_loss", loss, prog_bar=True, batch_size=batch.encoded_inputs.shape[0]
+        )
+        return loss
 
     @abstractmethod
     def map(self, x: Tensor) -> Tensor:
         """Map input window of states/times to output window."""
 
-    def configure_optimizers(self): ...
+    def validation_step(self, batch: EncodedBatch, batch_idx: int) -> Tensor:  # noqa: ARG002
+        output = self.map(batch.encoded_inputs)
+        loss = self.loss_func(output, batch.encoded_output_fields)
+        self.log(
+            "val_loss", loss, prog_bar=True, batch_size=batch.encoded_inputs.shape[0]
+        )
+        return loss
+
+    def configure_optimizers(self):
+        """Configure optimizers for training.
+
+        Returns Adam optimizer with learning_rate. Subclasses can override
+        to use different optimizers or learning rate schedules.
+        """
+        return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
 
     def _clone_batch(self, batch: EncodedBatch) -> EncodedBatch:
         return EncodedBatch(

@@ -1,14 +1,12 @@
 import lightning as L
-import torch
 from torch import nn
-from torch.utils.data import DataLoader, Dataset
 
 from auto_cast.decoders.channels_last import ChannelsLast
 from auto_cast.encoders.permute_concat import PermuteConcat
 from auto_cast.models.encoder_decoder import EncoderDecoder
 from auto_cast.models.encoder_processor_decoder import EncoderProcessorDecoder
 from auto_cast.processors.base import Processor
-from auto_cast.types import Batch, Tensor
+from auto_cast.types import Tensor
 
 
 class TinyProcessor(Processor):
@@ -23,42 +21,7 @@ class TinyProcessor(Processor):
         return self(x)
 
 
-def _toy_batch(
-    batch_size: int = 2,
-    t_in: int = 2,
-    t_out: int | None = None,
-    w: int = 4,
-    h: int = 4,
-    c: int = 1,
-) -> Batch:
-    t_out = t_out or t_in
-    input_fields = torch.randn(batch_size, t_in, w, h, c)
-    output_fields = torch.randn(batch_size, t_out, w, h, c)
-    return Batch(
-        input_fields=input_fields,
-        output_fields=output_fields,
-        constant_scalars=None,
-        constant_fields=None,
-    )
-
-
-class _BatchDataset(Dataset):
-    def __len__(self) -> int:
-        return 2  # keep small
-
-    def __getitem__(self, idx: int) -> Batch:
-        return _toy_batch(batch_size=1)
-
-
-dummy_loader = DataLoader(
-    _BatchDataset(),
-    batch_size=1,
-    collate_fn=lambda items: items[0],
-    num_workers=0,
-)
-
-
-def test_encoder_processor_decoder_training_step_runs():
+def test_encoder_processor_decoder_training_step_runs(make_toy_batch, dummy_loader):
     encoder = PermuteConcat(with_constants=False)
     decoder = ChannelsLast()
     loss = nn.MSELoss()
@@ -71,19 +34,22 @@ def test_encoder_processor_decoder_training_step_runs():
         loss_func=loss,
     )
 
-    batch = _toy_batch()
+    batch = make_toy_batch()
     train_loss = model.training_step(batch, 0)
 
     assert train_loss.shape == ()
     train_loss.backward()
 
-    trainer = L.Trainer(
-        max_epochs=1, logger=False, enable_checkpointing=False, limit_train_batches=1
-    )
-    trainer.fit(model, train_dataloaders=dummy_loader, val_dataloaders=dummy_loader)
+    L.Trainer(
+        max_epochs=1,
+        logger=False,
+        enable_checkpointing=False,
+        limit_train_batches=1,
+        accelerator="cpu",
+    ).fit(model, train_dataloaders=dummy_loader, val_dataloaders=dummy_loader)
 
 
-def test_encoder_processor_decoder_rollout_is_mixin_backed():
+def test_encoder_processor_decoder_rollout_is_mixin_backed(make_toy_batch):
     encoder = PermuteConcat(with_constants=False)
     decoder = ChannelsLast()
     loss = nn.MSELoss()
@@ -98,7 +64,7 @@ def test_encoder_processor_decoder_rollout_is_mixin_backed():
         teacher_forcing_ratio=0.0,
     )
 
-    batch = _toy_batch(t_in=2, t_out=2)
+    batch = make_toy_batch()
     preds, gts = model.rollout(batch)
 
     assert preds.shape[0] == 2

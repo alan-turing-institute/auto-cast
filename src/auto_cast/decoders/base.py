@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 
 from torch import nn
 
@@ -24,20 +24,19 @@ class Decoder(nn.Module, ABC):
         """
         return decoded
 
-    def decode(self, z: TensorBMultiL) -> Tensor:
+    @abstractmethod
+    def decode(self, z: TensorBMultiL) -> TensorBTSPlusC:
         """Decode the latent tensor back to the original space.
 
         Parameters
         ----------
-        z: Tensor
+        z: TensorBMultiL
             Latent tensor to be decoded.
 
         Returns
         -------
             Tensor: Decoded tensor in the original space.
         """
-        msg = "The decode method must be implemented by subclasses."
-        raise NotImplementedError(msg)
 
     def __call__(self, z: TensorBMultiL) -> TensorBTSPlusC:
         return self.decode(z)

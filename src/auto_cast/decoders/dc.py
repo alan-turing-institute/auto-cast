@@ -177,12 +177,12 @@ class DCDecoder(Decoder):
 
         Parameters
         ----------
-        z: TensorBCTS
+        z: TensorBCTSPlus
             Latent tensor with shape (B, C_i, L_1, ..., L_N).
 
         Returns
         -------
-        TensorBTSC
+        TensorBTSPlusC
             Decoded tensor with shape (B, L_1 x 2^D, ..., L_N x 2^D, C_o).
 
         """
@@ -210,7 +210,6 @@ class DCDecoder(Decoder):
         outputs = []
         for idx in range(z.shape[1]):
             x = z[:, idx, ...]
-            # Rearrange from (B, spatial..., C) to (B, C, spatial...)
             x = rearrange(x, "B ... C -> B C ...")
             x = self.forward(x)
             outputs.append(x)

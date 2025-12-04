@@ -10,9 +10,13 @@ from auto_cast.types import Tensor
 
 
 class TinyProcessor(Processor):
-    def __init__(self) -> None:
+    def __init__(self, in_channels: int = 1) -> None:
         super().__init__()
-        self.conv = nn.Conv3d(in_channels=1, out_channels=1, kernel_size=1)
+        self.conv = nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=in_channels,
+            kernel_size=1,
+        )
 
     def forward(self, x: Tensor) -> Tensor:
         return self.conv(x)
@@ -22,19 +26,24 @@ class TinyProcessor(Processor):
 
 
 def test_encoder_processor_decoder_training_step_runs(make_toy_batch, dummy_loader):
+    batch = make_toy_batch()
+    output_channels = batch.output_fields.shape[-1]
+    time_steps = batch.output_fields.shape[1]
+    # Encoder merges C*T into single dimension
+    merged_channels = output_channels * time_steps
+
     encoder = PermuteConcat(with_constants=False)
-    decoder = ChannelsLast()
+    decoder = ChannelsLast(output_channels=output_channels, time_steps=time_steps)
     loss = nn.MSELoss()
     encoder_decoder = EncoderDecoder(encoder=encoder, decoder=decoder, loss_func=loss)
 
-    processor = TinyProcessor()
+    processor = TinyProcessor(in_channels=merged_channels)
     model = EncoderProcessorDecoder.from_encoder_processor_decoder(
         encoder_decoder=encoder_decoder,
         processor=processor,
         loss_func=loss,
     )
 
-    batch = make_toy_batch()
     train_loss = model.training_step(batch, 0)
 
     assert train_loss.shape == ()
@@ -47,3 +56,31 @@ def test_encoder_processor_decoder_training_step_runs(make_toy_batch, dummy_load
         limit_train_batches=1,
         accelerator="cpu",
     ).fit(model, train_dataloaders=dummy_loader, val_dataloaders=dummy_loader)
+
+
+def test_encoder_processor_decoder_rollout_is_mixin_backed(make_toy_batch):
+    batch = make_toy_batch()
+    output_channels = batch.output_fields.shape[-1]
+    time_steps = batch.output_fields.shape[1]
+    merged_channels = output_channels * time_steps
+
+    encoder = PermuteConcat(with_constants=False)
+    decoder = ChannelsLast(output_channels=output_channels, time_steps=time_steps)
+    loss = nn.MSELoss()
+    encoder_decoder = EncoderDecoder(encoder=encoder, decoder=decoder, loss_func=loss)
+    processor = TinyProcessor(in_channels=merged_channels)
+    model = EncoderProcessorDecoder.from_encoder_processor_decoder(
+        encoder_decoder=encoder_decoder,
+        processor=processor,
+        loss_func=loss,
+        stride=1,
+        max_rollout_steps=2,
+        teacher_forcing_ratio=0.0,
+    )
+
+    batch = make_toy_batch()
+    preds, gts = model.rollout(batch)
+
+    assert preds.shape[0] == 2
+    assert gts is not None
+    assert gts.shape[0] == 2

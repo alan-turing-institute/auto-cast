@@ -26,4 +26,4 @@ class PermuteConcat(Encoder):
             scalars = rearrange(scalars, "b c -> b c 1 1 1")
             scalars = scalars.expand(b, -1, t, w, h)
             x = torch.cat([x, scalars], dim=1)
-        return x
+        return rearrange(x, "b c t w h -> b (c t) w h")

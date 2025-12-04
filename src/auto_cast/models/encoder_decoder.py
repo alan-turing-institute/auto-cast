@@ -6,7 +6,7 @@ from torch import nn
 
 from auto_cast.decoders import Decoder
 from auto_cast.encoders import Encoder
-from auto_cast.types import Batch, Tensor, TensorBTSC
+from auto_cast.types import Batch, Tensor, TensorBC, TensorBTSC
 
 
 class EncoderDecoder(L.LightningModule):
@@ -23,7 +23,7 @@ class EncoderDecoder(L.LightningModule):
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         return self.decoder(self.encoder(*args, **kwargs))
 
-    def forward_with_latent(self, batch: Batch) -> tuple[TensorBTSC, TensorBTSC]:
+    def forward_with_latent(self, batch: Batch) -> tuple[TensorBTSC, TensorBC]:
         encoded = self.encode(batch)
         decoded = self.decode(encoded)
         return decoded, encoded
@@ -47,10 +47,10 @@ class EncoderDecoder(L.LightningModule):
     def predict_step(self, batch: Batch, batch_idx: int) -> TensorBTSC:  # noqa: ARG002
         return self(batch)
 
-    def encode(self, batch: Batch) -> TensorBTSC:
+    def encode(self, batch: Batch) -> TensorBC:
         return self.encoder.encode(batch)
 
-    def decode(self, z: TensorBTSC) -> TensorBTSC:
+    def decode(self, z: TensorBC) -> TensorBTSC:
         return self.decoder.decode(z)
 
     def configure_optimizers(self):

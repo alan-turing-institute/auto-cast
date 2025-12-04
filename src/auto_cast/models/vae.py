@@ -6,7 +6,7 @@ from torch import nn
 from auto_cast.decoders import Decoder
 from auto_cast.encoders import Encoder
 from auto_cast.models.encoder_decoder import EncoderDecoder
-from auto_cast.types import Batch, Tensor, TensorBTSC
+from auto_cast.types import Batch, Tensor, TensorBC, TensorBTSC
 
 
 class VAELoss(nn.Module):
@@ -103,10 +103,10 @@ class VAE(EncoderDecoder):
 
         self.loss_func = VAELoss()
 
-    def forward(self, batch: Batch) -> Tensor:
+    def forward(self, batch: Batch) -> TensorBTSC:
         return self.forward_with_latent(batch)[0]
 
-    def forward_with_latent(self, batch: Batch) -> tuple[TensorBTSC, TensorBTSC]:
+    def forward_with_latent(self, batch: Batch) -> tuple[TensorBTSC, TensorBC]:
         encoded = self.encode(batch)
         # Split along channel dim (last dim)
         mean, log_var = encoded.chunk(2, dim=-1)
@@ -114,7 +114,7 @@ class VAE(EncoderDecoder):
         decoded = self.decode(z)
         return decoded, encoded
 
-    def reparametrize(self, mean: TensorBTSC, log_var: TensorBTSC) -> TensorBTSC:
+    def reparametrize(self, mean: TensorBC, log_var: TensorBC) -> TensorBC:
         """Reparameterisation trick.
 
         Samples z ~ N(mean, sigma) during training, but returns the mean
@@ -128,10 +128,9 @@ class VAE(EncoderDecoder):
         eps = torch.randn_like(std)
         return mean + eps * std
 
-    def encode(self, batch: Batch) -> TensorBTSC:
-        h = self.encoder.encode(
-            batch
-        )  # Shape: (B, T, spatial..., C) or (B, T, C) for flat
+    def encode(self, batch: Batch) -> TensorBC:
+        # Shape: (B, T, spatial..., C) or (B, T, C) for flat
+        h = self.encoder.encode(batch)
 
         # Check if latent is spatial (has spatial dims) or flat
         is_spatial = self.spatial is not None and h.dim() > 3

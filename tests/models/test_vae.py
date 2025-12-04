@@ -269,7 +269,7 @@ def test_vae_reparametrization_trick():
 
 
 def test_vae_flat_latents():
-    """Ensure VAE handles non-spatial (flat) latent representations."""
+    """Ensure VAE handles flat latent representations with minimal spatial input."""
 
     input_dim = 12
     latent_dim = 4
@@ -277,7 +277,8 @@ def test_vae_flat_latents():
     decoder = _FlatDecoder(latent_dim=latent_dim, output_dim=input_dim)
     vae = VAE(encoder=encoder, decoder=decoder, spatial=None)
 
-    x = torch.rand(5, 2, input_dim)  # Add time dimension (B, T, C)
+    # Use (B, T, 1, C) to satisfy TensorBTSC requirement of at least 1 spatial dim
+    x = torch.rand(5, 2, 1, input_dim)  # (B, T, spatial, C)
     batch = Batch(
         input_fields=x,
         output_fields=x,
@@ -285,12 +286,13 @@ def test_vae_flat_latents():
         constant_fields=None,
     )
 
-    # Forward paths should preserve flat shapes
+    # Forward paths should preserve shapes
     output = vae(batch)
     assert output.shape == x.shape
     decoded, encoded = vae.forward_with_latent(batch)
     assert decoded.shape == x.shape
-    assert encoded.shape == (x.shape[0], x.shape[1], 2 * latent_dim)  # (B, T, 2*C)
+    # Encoded should be (B, T, 1, 2*latent_dim) since spatial dim is preserved
+    assert encoded.shape == (x.shape[0], x.shape[1], 1, 2 * latent_dim)
 
     # Stochastic sampling only during training for flat latents
     vae.train()

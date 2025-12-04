@@ -7,19 +7,20 @@ from torch.utils.data import DataLoader
 
 Tensor = torch.Tensor
 
-TensorBC = Float[Tensor, "batch channel"]
+TensorBC = Float[Tensor, "batch *spatiotemporal channel"]
+TensorBTC = Float[Tensor, "batch time *spatial channel"]
 TensorBTWHC = Float[Tensor, "batch time width height channel"]
 TensorBTWHLC = Float[Tensor, "batch time width height length channel"]
-TensorBTSC = Float[Tensor, "batch time *spatial channel"]
+# 1 or more spatial dims supported by pattern: "spatial *spatial"
+TensorBTSC = Float[Tensor, "batch time spatial *spatial channel"]
 TensorBCTWH = Float[Tensor, "batch channel time width height"]
 TensorBCTWHL = Float[Tensor, "batch channel time width height length"]
 TensorBCTHW = Float[Tensor, "batch channel time height width"]
-TensorBCTS = Float[Tensor, "batch channel time *spatial"]
+TensorBCTS = Float[Tensor, "batch channel time spatial *spatial"]
 TensorBWHC = Float[Tensor, "batch width height channel"]
 TensorBWHLC = Float[Tensor, "batch width height length channel"]
-TensorBSC = Float[Tensor, "batch *spatial channel"]
+TensorBSC = Float[Tensor, "batch spatial *spatial channel"]
 TensorBTCHW = Float[Tensor, "batch time channel height width"]
-TensorBTC = Float[Tensor, "batch time channel"]
 
 Input = Tensor | DataLoader
 RolloutOutput = tuple[Tensor, None] | tuple[Tensor, Tensor]

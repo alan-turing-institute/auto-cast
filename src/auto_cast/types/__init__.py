@@ -7,19 +7,30 @@ from torch.utils.data import DataLoader
 
 Tensor = torch.Tensor
 
-TensorBC = Float[Tensor, "batch *spatiotemporal channel"]
-TensorBTC = Float[Tensor, "batch time *spatial channel"]
+# Type hints for various tensor shapes:
+# - B: batch dimension
+# - T: time dimension
+# - S: spatial dimension (could be multiple spatial dims)
+# - C: channel dimension
+# - L: latent dimension
+# - Star (*): indicates zero or more dimensions
+# - Plus (+): indicates one or more dimensions
+# - Multi: indicates zero or more combined dimensions
+TensorBC = Float[Tensor, "batch channel"]
+TensorBMultiC = Float[Tensor, "batch *spatiotemporal channel"]
+TensorBMultiL = Float[Tensor, "batch *spatiotemporal latent"]
+TensorBTSStarC = Float[Tensor, "batch time *spatial channel"]
 TensorBTWHC = Float[Tensor, "batch time width height channel"]
-TensorBTWHLC = Float[Tensor, "batch time width height length channel"]
+TensorBTWHDC = Float[Tensor, "batch time width height depth channel"]
 # 1 or more spatial dims supported by pattern: "spatial *spatial"
-TensorBTSC = Float[Tensor, "batch time spatial *spatial channel"]
+TensorBTSPlusC = Float[Tensor, "batch time spatial *spatial channel"]
 TensorBCTWH = Float[Tensor, "batch channel time width height"]
-TensorBCTWHL = Float[Tensor, "batch channel time width height length"]
+TensorBCTWHD = Float[Tensor, "batch channel time width height depth"]
 TensorBCTHW = Float[Tensor, "batch channel time height width"]
-TensorBCTS = Float[Tensor, "batch channel time spatial *spatial"]
+TensorBCTSPlus = Float[Tensor, "batch channel time spatial *spatial"]
 TensorBWHC = Float[Tensor, "batch width height channel"]
-TensorBWHLC = Float[Tensor, "batch width height length channel"]
-TensorBSC = Float[Tensor, "batch spatial *spatial channel"]
+TensorBWHDC = Float[Tensor, "batch width height depth channel"]
+TensorBSPlusC = Float[Tensor, "batch spatial *spatial channel"]
 TensorBTCHW = Float[Tensor, "batch time channel height width"]
 
 Input = Tensor | DataLoader
@@ -34,18 +45,18 @@ RolloutOutput = tuple[Tensor, None] | tuple[Tensor, Tensor]
 class Batch:
     """A batch in input data space."""
 
-    input_fields: TensorBTSC
-    output_fields: TensorBTSC
+    input_fields: TensorBTSPlusC
+    output_fields: TensorBTSPlusC
     constant_scalars: TensorBC | None
-    constant_fields: TensorBSC | None
+    constant_fields: TensorBSPlusC | None
 
 
 @dataclass
 class EncodedBatch:
     """A batch after being processed by an Encoder."""
 
-    encoded_inputs: TensorBTSC
-    encoded_output_fields: TensorBTSC
+    encoded_inputs: TensorBTSPlusC
+    encoded_output_fields: TensorBTSPlusC
     encoded_info: dict[str, Tensor]
 
 

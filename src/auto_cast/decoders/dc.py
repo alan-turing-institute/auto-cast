@@ -10,7 +10,7 @@ from torch import nn
 from auto_cast.decoders.base import Decoder
 from auto_cast.nn import ResBlock
 from auto_cast.nn.dc_utils import build_sample_block
-from auto_cast.types import TensorBCTS, TensorBTSC
+from auto_cast.types import TensorBCTSPlus, TensorBTSPlusC
 
 
 class DCDecoder(Decoder):
@@ -169,10 +169,10 @@ class DCDecoder(Decoder):
 
         self.decoder_model = self.ascent
 
-    def postprocess(self, decoded: TensorBTSC) -> TensorBTSC:
+    def postprocess(self, decoded: TensorBTSPlusC) -> TensorBTSPlusC:
         return rearrange(decoded, "B C ... -> B ... C")
 
-    def forward(self, z: TensorBCTS) -> TensorBTSC:
+    def forward(self, z: TensorBCTSPlus) -> TensorBTSPlusC:
         """Forward pass through decoder (for direct tensor input).
 
         Parameters
@@ -193,7 +193,7 @@ class DCDecoder(Decoder):
         x = self.unpatch(x)
         return self.postprocess(x)
 
-    def decode(self, z: TensorBTSC) -> TensorBTSC:
+    def decode(self, z: TensorBTSPlusC) -> TensorBTSPlusC:
         """Decode latent tensor with time dimension back to original space.
 
         Parameters
@@ -216,5 +216,5 @@ class DCDecoder(Decoder):
             outputs.append(x)
         return torch.stack(outputs, dim=1)
 
-    def __call__(self, z: TensorBTSC) -> TensorBTSC:
+    def __call__(self, z: TensorBTSPlusC) -> TensorBTSPlusC:
         return self.decode(z)

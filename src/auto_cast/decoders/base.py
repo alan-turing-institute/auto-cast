@@ -2,7 +2,7 @@ from abc import ABC
 
 from torch import nn
 
-from auto_cast.types import Tensor, TensorBTSC
+from auto_cast.types import Tensor, TensorBMultiL, TensorBTSPlusC
 
 
 class Decoder(nn.Module, ABC):
@@ -16,7 +16,7 @@ class Decoder(nn.Module, ABC):
         self.latent_dim = latent_dim
         self.output_channels = output_channels
 
-    def postprocess(self, decoded: Tensor) -> TensorBTSC:
+    def postprocess(self, decoded: Tensor) -> TensorBTSPlusC:
         """Optionally transform the decoded tensor before returning.
 
         Subclasses can override to implement post-decoding steps. Default is
@@ -24,7 +24,7 @@ class Decoder(nn.Module, ABC):
         """
         return decoded
 
-    def decode(self, z: TensorBTSC) -> Tensor:
+    def decode(self, z: TensorBMultiL) -> Tensor:
         """Decode the latent tensor back to the original space.
 
         Parameters
@@ -39,5 +39,5 @@ class Decoder(nn.Module, ABC):
         msg = "The decode method must be implemented by subclasses."
         raise NotImplementedError(msg)
 
-    def __call__(self, z: TensorBTSC) -> TensorBTSC:
+    def __call__(self, z: TensorBMultiL) -> TensorBTSPlusC:
         return self.decode(z)

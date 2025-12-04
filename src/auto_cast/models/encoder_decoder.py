@@ -27,7 +27,11 @@ class EncoderDecoder(L.LightningModule):
         return decoded, encoded
 
     def training_step(self, batch: Batch, batch_idx: int) -> Tensor:  # noqa: ARG002
-        output = self(batch)
+        if self.loss_func is None:
+            msg = "Loss function not defined for EncoderDecoder model."
+            raise ValueError(msg)
+        x = self(batch)
+        output = self.decoder(x)
         loss = self.loss_func(output, batch.output_fields)
         self.log(
             "train_loss", loss, prog_bar=True, batch_size=batch.input_fields.shape[0]
@@ -54,3 +58,18 @@ class EncoderDecoder(L.LightningModule):
     def configure_optimizers(self):
         """Configure optimizers for training."""
         return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+
+
+class VAE(EncoderDecoder):
+    """Variational Autoencoder Model."""
+
+    def forward(self, batch: Batch) -> Tensor:
+        mu, log_var = self.encoder(batch)
+        z = self.reparametrize(mu, log_var)
+        x = self.decoder(z)
+        return x  # noqa: RET504
+
+    def reparametrize(self, mu: Tensor, log_var: Tensor) -> Tensor:
+        std = torch.exp(0.5 * log_var)
+        eps = torch.randn_like(std)
+        return mu + eps * std

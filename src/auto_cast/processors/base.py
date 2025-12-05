@@ -44,7 +44,6 @@ class Processor(RolloutMixin[EncodedBatch], ABC, L.LightningModule):
         into an EncodedBatch using the model's encoder (or identity mapping).
         """
         ...
-        
     def training_step(self, batch: Batch, batch_idx: int) -> Tensor:
         encoded_batch = self._encode_batch(batch)
         

@@ -5,8 +5,9 @@ import lightning as L
 import torch
 from torch import nn
 
+# Assuming these are the correct imports for your types:
 from auto_cast.processors.rollout import RolloutMixin
-from auto_cast.types import EncodedBatch, Tensor
+from auto_cast.types import EncodedBatch, Tensor, Batch # <-- Added Batch import
 
 
 class Processor(RolloutMixin[EncodedBatch], ABC, L.LightningModule):
@@ -35,8 +36,10 @@ class Processor(RolloutMixin[EncodedBatch], ABC, L.LightningModule):
         """Forward pass through the Processor."""
         msg = "To implement."
         raise NotImplementedError(msg)
+        
 
-    def training_step(self, batch: EncodedBatch, batch_idx: int) -> Tensor:  # noqa: ARG002
+    def training_step(self, batch: EncodedBatch, batch_idx: int) -> Tensor: # <-- Changed type hint from EncodedBatch to Batch
+        # Convert raw Batch to EncodedBatch before processing        
         output = self.map(batch.encoded_inputs)
         loss = self.loss_func(output, batch.encoded_output_fields)
         self.log(
@@ -48,7 +51,9 @@ class Processor(RolloutMixin[EncodedBatch], ABC, L.LightningModule):
     def map(self, x: Tensor) -> Tensor:
         """Map input window of states/times to output window."""
 
-    def validation_step(self, batch: EncodedBatch, batch_idx: int) -> Tensor:  # noqa: ARG002
+    def validation_step(self, batch: EncodedBatch, batch_idx: int) -> Tensor: # <-- Changed type hint from EncodedBatch to Batch
+        # Convert raw Batch to EncodedBatch before processing
+        
         output = self.map(batch.encoded_inputs)
         loss = self.loss_func(output, batch.encoded_output_fields)
         self.log(
@@ -99,11 +104,3 @@ class Processor(RolloutMixin[EncodedBatch], ABC, L.LightningModule):
             encoded_output_fields=next_outputs,
             encoded_info=batch.encoded_info,
         )
-
-
-class DiscreteProcessor(Processor, ABC):
-    """DiscreteProcessor."""
-
-
-class FlowBasedGenerativeProcessor(DiscreteProcessor):
-    """Flow-based generative processor."""

@@ -35,6 +35,7 @@ class DiffusionProcessor(Processor):
         stride: int = 1,
         max_rollout_steps: int = 10,
         learning_rate: float = 1e-4,
+        n_steps_output: int = 4,
     ):
 
         super().__init__()
@@ -42,7 +43,7 @@ class DiffusionProcessor(Processor):
         self.stride = stride
         self.max_rollout_steps = max_rollout_steps
         self.learning_rate = learning_rate
-        
+        self.n_steps_output = n_steps_output
         # Create Azula denoiser with chosen preconditioning
         if denoiser_type == 'simple':
             self.denoiser = SimpleDenoiser(backbone=backbone, schedule=schedule)
@@ -53,37 +54,32 @@ class DiffusionProcessor(Processor):
                 
         # Store schedule for direct access
         self.schedule = schedule
-    def _encode_batch(self, batch: Batch) -> EncodedBatch:
-            """Identity encoding for DiffusionProcessor (assuming no separate encoder)."""
-            return EncodedBatch(
-                encoded_inputs=batch.input_fields,
-                encoded_output_fields=batch.output_fields,
-                encoded_info={},
-            )
+
     def map(self, x: Tensor) -> Tensor:
         """Map input window of states/times to output window using denoiser."""
 
         # if we start from zero at every autoregressive step, 
         # the model is asked to denoise using t=0, which is a point it has never been trained on.
         self.inference_t = 1e-5
-        t = torch.full((x.size(0),), self.inference_t, device=x.device)        
-        return self._denoise(x, t)
+        t = torch.full((x.size(0),), self.inference_t, device=x.device)
+        B, _, C, H, W = x.shape
+        x_t = torch.randn(B, self.n_steps_output, C, H, W, device=x.device)
+        return self._denoise(x_t, t, cond=x)
     
     def forward(self, x: Tensor) -> Tensor:
         return self.map(x)
     
-    def _denoise(self, x: Tensor, t: Tensor) -> Tensor:
-        posterior = self.denoiser(x, t)
+    def _denoise(self, x: Tensor, t: Tensor, cond: Tensor) -> Tensor:
+        posterior = self.denoiser(x, t, cond=cond)
         return posterior.mean
     
-    def training_step(self, batch: Batch, batch_idx: int) -> Tensor: # Note: batch: Batch
+    def training_step(self, batch: EncodedBatch, batch_idx: int) -> Tensor:
         """Training step with diffusion loss.
 
         Sample random time steps and compute loss between denoised output and clean data.
         """
-        encoded_batch = self._encode_batch(batch)
-        output = self.map(encoded_batch.encoded_inputs)
-        x_0 = encoded_batch.encoded_output_fields  # Clean data : (B, T,C, H, W)
+        x_cond = batch.encoded_inputs
+        x_0 = batch.encoded_output_fields  # Clean data : (B, T,C, H, W)
 
         # Sample random times in [0, 1] uniformly
         t = torch.rand(x_0.size(0), device=x_0.device)  # (B,)
@@ -101,7 +97,7 @@ class DiffusionProcessor(Processor):
         noise = torch.randn_like(x_0)
         x_t = alpha_t * x_0 + sigma_t * noise
 
-        x_denoised =  self._denoise(x_t, t) # Denoised output : (B, T, C, H, W)
+        x_denoised =  self._denoise(x_t, t, cond=x_cond) # Denoised output : (B, T, C, H, W)
         w_t = (alpha_t / sigma_t) ** 2 + 1
         w_t = torch.clip(w_t, max=1e4)
         
@@ -110,13 +106,14 @@ class DiffusionProcessor(Processor):
             "train_loss",
             loss,
             prog_bar=True,
-            batch_size=encoded_batch.encoded_inputs.shape[0]  #  proper averaging across batches
+            batch_size=batch.encoded_inputs.shape[0]  #  proper averaging across batches
         )
         return loss
     
     def sample(
         self,
         x_t: Tensor,
+        cond: Tensor,
         num_steps: int = 100,
         sampler: str = 'euler',
         eta: float = 0.0,
@@ -129,6 +126,7 @@ class DiffusionProcessor(Processor):
         
         Args:
             x_t: Starting noise (B, T, C, H, W)
+            cond: Conditioning input (B, T_cond, C_cond, H, W)
             num_steps: Number of denoising steps
             sampler: Type of sampler to use:
                 - 'euler': Euler ODE solver (fast, deterministic)
@@ -193,10 +191,10 @@ class DiffusionProcessor(Processor):
             
             x = x_t
             for t, s in time_pairs:
-                x = azula_sampler.step(x, t, s)
+                x = azula_sampler.step(x, t, s, cond=cond)
                 trajectory.append(x)
             
             # Stack into single tensor , this is just for debugging and visualisation purposes 
             return torch.stack(trajectory, dim=0)  # (num_steps+1, B, T, C, H, W)
         else:
-            return azula_sampler(x_t)  # (B, T, C, H, W)
+            return azula_sampler(x_t, cond=cond)  # (B, T, C, H, W)

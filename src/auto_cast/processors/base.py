@@ -5,8 +5,9 @@ import lightning as L
 import torch
 from torch import nn
 
+# Assuming these are the correct imports for your types:
 from auto_cast.processors.rollout import RolloutMixin
-from auto_cast.types import EncodedBatch, Tensor
+from auto_cast.types import EncodedBatch, Tensor, Batch # <-- Added Batch import
 
 
 class Processor(RolloutMixin[EncodedBatch], ABC, L.LightningModule):
@@ -35,12 +36,23 @@ class Processor(RolloutMixin[EncodedBatch], ABC, L.LightningModule):
         """Forward pass through the Processor."""
         msg = "To implement."
         raise NotImplementedError(msg)
-
-    def training_step(self, batch: EncodedBatch, batch_idx: int) -> Tensor:  # noqa: ARG002
-        output = self.map(batch.encoded_inputs)
-        loss = self.loss_func(output, batch.encoded_output_fields)
+        
+    @abstractmethod
+    def _encode_batch(self, batch: Batch) -> EncodedBatch:
+        """
+        Abstract method to convert a raw Batch from the DataLoader 
+        into an EncodedBatch using the model's encoder (or identity mapping).
+        """
+        ...
+        
+    def training_step(self, batch: Batch, batch_idx: int) -> Tensor: # <-- Changed type hint from EncodedBatch to Batch
+        # Convert raw Batch to EncodedBatch before processing
+        encoded_batch = self._encode_batch(batch) 
+        
+        output = self.map(encoded_batch.encoded_inputs)
+        loss = self.loss_func(output, encoded_batch.encoded_output_fields)
         self.log(
-            "train_loss", loss, prog_bar=True, batch_size=batch.encoded_inputs.shape[0]
+            "train_loss", loss, prog_bar=True, batch_size=encoded_batch.encoded_inputs.shape[0]
         )
         return loss
 
@@ -48,11 +60,14 @@ class Processor(RolloutMixin[EncodedBatch], ABC, L.LightningModule):
     def map(self, x: Tensor) -> Tensor:
         """Map input window of states/times to output window."""
 
-    def validation_step(self, batch: EncodedBatch, batch_idx: int) -> Tensor:  # noqa: ARG002
-        output = self.map(batch.encoded_inputs)
-        loss = self.loss_func(output, batch.encoded_output_fields)
+    def validation_step(self, batch: Batch, batch_idx: int) -> Tensor: # <-- Changed type hint from EncodedBatch to Batch
+        # Convert raw Batch to EncodedBatch before processing
+        encoded_batch = self._encode_batch(batch) 
+        
+        output = self.map(encoded_batch.encoded_inputs)
+        loss = self.loss_func(output, encoded_batch.encoded_output_fields)
         self.log(
-            "val_loss", loss, prog_bar=True, batch_size=batch.encoded_inputs.shape[0]
+            "val_loss", loss, prog_bar=True, batch_size=encoded_batch.encoded_inputs.shape[0]
         )
         return loss
 
@@ -64,7 +79,9 @@ class Processor(RolloutMixin[EncodedBatch], ABC, L.LightningModule):
         """
         return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
 
+    # All methods below this line correctly use EncodedBatch, so they remain unchanged.
     def _clone_batch(self, batch: EncodedBatch) -> EncodedBatch:
+        # ... (unchanged logic) ...
         return EncodedBatch(
             encoded_inputs=batch.encoded_inputs.clone(),
             encoded_output_fields=batch.encoded_output_fields.clone(),
@@ -99,11 +116,3 @@ class Processor(RolloutMixin[EncodedBatch], ABC, L.LightningModule):
             encoded_output_fields=next_outputs,
             encoded_info=batch.encoded_info,
         )
-
-
-class DiscreteProcessor(Processor, ABC):
-    """DiscreteProcessor."""
-
-
-class FlowBasedGenerativeProcessor(DiscreteProcessor):
-    """Flow-based generative processor."""

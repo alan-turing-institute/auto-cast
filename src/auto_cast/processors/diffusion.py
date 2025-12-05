@@ -5,7 +5,6 @@ import torch.nn as nn
 
 from auto_cast.processors.base import Processor
 from auto_cast.types import Batch, EncodedBatch, RolloutOutput, Tensor
-
 from azula.noise import Schedule, VESchedule, VPSchedule, CosineSchedule, RectifiedSchedule
 from azula.denoise import (
     Denoiser, 
@@ -54,7 +53,13 @@ class DiffusionProcessor(Processor):
                 
         # Store schedule for direct access
         self.schedule = schedule
-
+    def _encode_batch(self, batch: Batch) -> EncodedBatch:
+            """Identity encoding for DiffusionProcessor (assuming no separate encoder)."""
+            return EncodedBatch(
+                encoded_inputs=batch.input_fields,
+                encoded_output_fields=batch.output_fields,
+                encoded_info={},
+            )
     def map(self, x: Tensor) -> Tensor:
         """Map input window of states/times to output window using denoiser."""
 
@@ -71,12 +76,14 @@ class DiffusionProcessor(Processor):
         posterior = self.denoiser(x, t)
         return posterior.mean
     
-    def training_step(self, batch:EncodedBatch, batch_idx:int) -> Tensor:
+    def training_step(self, batch: Batch, batch_idx: int) -> Tensor: # Note: batch: Batch
         """Training step with diffusion loss.
 
         Sample random time steps and compute loss between denoised output and clean data.
         """
-        x_0 = batch.encoded_output_fields  # Clean data : (B, T,C, H, W)
+        encoded_batch = self._encode_batch(batch)
+        output = self.map(encoded_batch.encoded_inputs)
+        x_0 = encoded_batch.encoded_output_fields  # Clean data : (B, T,C, H, W)
 
         # Sample random times in [0, 1] uniformly
         t = torch.rand(x_0.size(0), device=x_0.device)  # (B,)
@@ -103,7 +110,7 @@ class DiffusionProcessor(Processor):
             "train_loss",
             loss,
             prog_bar=True,
-            batch_size=batch.encoded_inputs.shape[0]  #  proper averaging across batches
+            batch_size=encoded_batch.encoded_inputs.shape[0]  #  proper averaging across batches
         )
         return loss
     

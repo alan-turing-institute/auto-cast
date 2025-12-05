@@ -14,7 +14,7 @@ class EncoderDecoder(L.LightningModule):
 
     encoder: Encoder
     decoder: Decoder
-    loss_func: nn.Module | None = None
+    loss_func: nn.Module | None
     learning_rate: float = 1e-3
 
     def __init__(self):

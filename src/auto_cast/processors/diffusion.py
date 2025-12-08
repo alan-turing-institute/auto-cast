@@ -38,6 +38,7 @@ class DiffusionProcessor(Processor):
         learning_rate: float = 1e-4,
         n_steps_output: int = 4,
         n_channels_out: int = 1,
+        sampler_steps: int = 50,
     ):
 
         super().__init__()
@@ -47,6 +48,7 @@ class DiffusionProcessor(Processor):
         self.learning_rate = learning_rate
         self.n_steps_output = n_steps_output
         self.n_channels_out = n_channels_out
+        self.sampler_steps = sampler_steps
 
         # Create Azula denoiser with chosen preconditioning
         if denoiser_type == 'simple':
@@ -63,13 +65,16 @@ class DiffusionProcessor(Processor):
     def map(self, x: Tensor) -> Tensor:
         """Map input window of states/times to output window using denoiser."""
 
-        # if we start from zero at every autoregressive step, 
+        # if we start from zero at every autoregressive step,
         # the model is asked to denoise using t=0, which is a point it has never been trained on.
-        self.inference_t = 1e-5
-        t = torch.full((x.size(0),), self.inference_t, device=x.device)
-        B, _, H, W, _ = x.shape
-        x_t = torch.randn(B, self.n_steps_output, H, W, self.n_channels_out, device=x.device)
-        return self._denoise(x_t, t, cond=x)
+        # self.inference_t = 1e-5
+
+        sampler: Sampler = self._get_sampler(
+            self.sampler_steps, dtype=x.dtype, device=x.device
+        )
+        B, _, W, H, _ = x.shape
+        x_1 = sampler.init((B, self.n_steps_output, W, H, self.n_channels_out)) # Fully noised
+        return sampler(x_1, cond=x)
     
     def forward(self, x: Tensor) -> Tensor:
         return self.map(x)
@@ -119,15 +124,12 @@ class DiffusionProcessor(Processor):
         return loss
     
     def _get_sampler(self,
-        x_t: Tensor,
-        cond: Tensor,
         num_steps: int = 100,
         sampler: str = 'euler',
         eta: float = 0.0,
-        return_trajectory: bool = False,
         silent: bool = True,
         **sampler_kwargs
-    ):
+    ) -> Sampler:
         # Create appropriate Azula sampler
         if sampler == 'euler':
             azula_sampler = EulerSampler(
@@ -168,7 +170,7 @@ class DiffusionProcessor(Processor):
             )
         else:
             raise ValueError(f"Unknown sampler: {sampler}. Choose from: 'euler', 'heun', 'ddim', 'ddpm'")
-
+        return azula_sampler
     def sample(
         self,
         x_t: Tensor,
@@ -202,8 +204,6 @@ class DiffusionProcessor(Processor):
             Or if return_trajectory=True: List of tensors
         """
         azula_sampler = self._get_sampler(
-            x_t,
-            cond,
             num_steps=num_steps,
             sampler=sampler,
             eta=eta,

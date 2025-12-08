@@ -88,15 +88,16 @@ params = list(
         [1, 4],  # n_steps_input
         [1, 2],  # n_channels_in
         [1, 4],  # n_channels_out
+        ["cpu", "mps"],  # accelerator
     )
 )
 
 @pytest.mark.parametrize(
-    ("n_steps_output", "n_steps_input", "n_channels_in", "n_channels_out"),
+    ("n_steps_output", "n_steps_input", "n_channels_in", "n_channels_out", "accelerator"),
     params,
 )
 def test_diffusion_processor(
-    n_steps_output: int, n_steps_input: int, n_channels_in: int, n_channels_out: int
+    n_steps_output: int, n_steps_input: int, n_channels_in: int, n_channels_out: int, accelerator: str
 ):
     encoded_loader = _build_encoded_loader(
         n_steps_input=n_steps_input,
@@ -115,11 +116,12 @@ def test_diffusion_processor(
             hid_channels=(32, 64, 128),
             hid_blocks=(2, 2, 2),
             spatial=2,
-            periodic=False,
+            periodic=False
         ),
         schedule=VPSchedule(),
         n_steps_output=n_steps_output,
         n_channels_out=n_channels_out,
+        sampler_steps=5
     )
 
     output = model.map(encoded_batch.encoded_inputs)
@@ -135,9 +137,16 @@ def test_diffusion_processor(
         enable_checkpointing=False,
         limit_train_batches=1,
         enable_model_summary=False,
-        accelerator="cpu",
+        accelerator=accelerator,
     ).fit(
         model,
         train_dataloaders=encoded_loader,
         val_dataloaders=encoded_loader,
     )
+
+    # Testing map
+    with torch.no_grad():
+        model.eval()
+        output = model.map(encoded_batch.encoded_inputs)
+        assert output.shape == encoded_batch.encoded_output_fields.shape
+

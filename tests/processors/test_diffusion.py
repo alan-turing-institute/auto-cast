@@ -88,7 +88,7 @@ params = list(
         [1, 4],  # n_steps_input
         [1, 2],  # n_channels_in
         [1, 4],  # n_channels_out
-        ["cpu", "mps"],  # accelerator
+        ["cpu", "mps"] if torch.backends.mps.is_available() else ["cpu"],  # accelerator
     )
 )
 

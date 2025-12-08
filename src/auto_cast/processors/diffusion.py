@@ -57,35 +57,48 @@ class DiffusionProcessor(Processor):
             self.denoiser = KarrasDenoiser(backbone=backbone, schedule=schedule)
         else:
             raise ValueError(f"Unknown denoiser type: {denoiser_type}")
-                
+
         # Store schedule for direct access
         self.schedule = schedule
 
 
     def map(self, x: Tensor) -> Tensor:
         """Map input window of states/times to output window using denoiser."""
-
         # if we start from zero at every autoregressive step,
         # the model is asked to denoise using t=0, which is a point it has never been trained on.
         # self.inference_t = 1e-5
+        if self.train:
+            msg = "Direct map not implemented during training. Use training_step instead."
+            raise NotImplementedError(msg)
 
-        sampler: Sampler = self._get_sampler(
-            self.sampler_steps, dtype=x.dtype, device=x.device
-        )
+        sampler = self._get_sampler(self.sampler_steps, dtype=x.dtype, device=x.device)
         B, _, W, H, _ = x.shape
         x_1 = sampler.init((B, self.n_steps_output, W, H, self.n_channels_out)) # Fully noised
         return sampler(x_1, cond=x)
-    
+
+
     def forward(self, x: Tensor) -> Tensor:
+        # Training mode: sample random time and denoise
+        if self.train:
+            B, _, W, H, _ = x.shape
+
+            # Sample a random time
+            t = torch.rand(B, device=x.device) * 0.999 + 0.001  # Avoid t=0 or t=1
+
+            # Create noisy input
+            x_noisy = torch.randn(B, self.n_steps_output, W, H, self.n_channels_out, device=x.device)
+
+            # Denoise (this preserves gradients)
+            posterior = self.denoiser(x_noisy, t, cond=x)
+            return posterior.mean
+
+        # Evaluation mode: use the map function
         return self.map(x)
-    
+
     def _denoise(self, x: Tensor, t: Tensor, cond: Tensor) -> Tensor:
         posterior = self.denoiser(x, t, cond=cond)
         return posterior.mean
-    
-    # def __call__(self, *args, **kwds):
-    #     return self.
-    
+
     def training_step(self, batch: EncodedBatch, batch_idx: int) -> Tensor:
         """Training step with diffusion loss.
 
@@ -97,26 +110,38 @@ class DiffusionProcessor(Processor):
         # Sample random times in [0, 1] uniformly
         t = torch.rand(x_0.size(0), device=x_0.device)  # (B,)
 
-        # OPTION A: Use Azula's built-in weighted loss
-        loss = self.denoiser.loss(x_0, t=t, cond=x_cond)
-
-        # OPTION B: Manual loss computation : currently the loss implemented here is the same as azula 
+        # Cannot use Azula's built-in weighted loss since ligntning calls forward
+        # loss = self.denoiser.loss(x_0, t=t, cond=x_cond)
 
         # Compute weighted loss
-        # alpha_t, sigma_t = self.schedule(t)
-        # alpha_t = alpha_t.view(-1, 1, 1, 1, 1) # (B, 1, 1, 1, 1)
-        # sigma_t = sigma_t.view(-1, 1, 1, 1, 1) # (B, 1, 1, 1, 1)
-
-        # noise = torch.randn_like(x_0)
-        # x_t = alpha_t * x_0 + sigma_t * noise
-
-        # x_denoised =  self._denoise(x_t, t, cond=x_cond) # Denoised output : (B, T, C, H, W)
-        # w_t = (alpha_t / sigma_t) ** 2 + 1
-        # w_t = torch.clip(w_t, max=1e4)
+        alpha_t, sigma_t = self.schedule(t)
+        alpha_t = alpha_t.view(-1, 1, 1, 1, 1) # (B, 1, 1, 1, 1)
+        sigma_t = sigma_t.view(-1, 1, 1, 1, 1) # (B, 1, 1, 1, 1)
         
-        # loss = (w_t * (x_denoised - x_0).square()).mean()
+        # Call forward in train mode to ensure gradients are tracked
+        x_denoised = self.forward(x_cond)
+        
+        w_t = (alpha_t / sigma_t) ** 2 + 1
+        w_t = torch.clip(w_t, max=1e4)
+        loss = (w_t * (x_denoised - x_0).square()).mean()
         self.log(
             "train_loss",
+            loss,
+            prog_bar=True,
+            batch_size=batch.encoded_inputs.shape[0]  #  proper averaging across batches
+        )
+        return loss
+    
+    @torch.no_grad()
+    def validation_step(self, batch: EncodedBatch, batch_idx: int) -> Tensor:  # noqa: ARG002
+        # TODO: placeholder for now - same as training step but this should be updated
+        # to compute the metrics on the rollout
+        x_cond = batch.encoded_inputs
+        x_0 = batch.encoded_output_fields  # Clean data : (B, T,C, H, W)
+        t = torch.rand(x_0.size(0), device=x_0.device)  # (B,)
+        loss = self.denoiser.loss(x_0, t=t, cond=x_cond)
+        self.log(
+            "validation_loss",
             loss,
             prog_bar=True,
             batch_size=batch.encoded_inputs.shape[0]  #  proper averaging across batches
@@ -171,6 +196,7 @@ class DiffusionProcessor(Processor):
         else:
             raise ValueError(f"Unknown sampler: {sampler}. Choose from: 'euler', 'heun', 'ddim', 'ddpm'")
         return azula_sampler
+
     def sample(
         self,
         x_t: Tensor,

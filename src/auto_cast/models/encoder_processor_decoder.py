@@ -47,6 +47,15 @@ class EncoderProcessorDecoder(RolloutMixin[Batch], L.LightningModule):
         instance.processor = processor
         for key, value in kwargs.items():
             setattr(instance, key, value)
+
+        # Assign rollout parameters from processor if not provided as kwargs
+        instance.stride = kwargs.get("stride", instance.processor.stride)
+        instance.teacher_forcing_ratio = kwargs.get(
+            "teacher_forcing_ratio", instance.processor.teacher_forcing_ratio
+        )
+        instance.max_rollout_steps = kwargs.get(
+            "max_rollout_steps", instance.processor.max_rollout_steps
+        )
         return instance
 
     def __call__(self, batch: Batch) -> TensorBTSPlusC:

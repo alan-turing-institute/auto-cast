@@ -94,7 +94,6 @@ class TemporalUNetBackbone(nn.Module):
 
         return rearrange(output, "b (t c) w h -> b t w h c", t=T_out, c=C)
 
-
 class SimpleUNet(nn.Module):
     """Simple UNet for diffusion with time and conditioning."""
     
@@ -102,53 +101,55 @@ class SimpleUNet(nn.Module):
         self,
         in_channels: int = 1,
         out_channels: int = 1,
+        cond_channels: int = 1,
         base_channels: int = 32,
         depth: int = 3,
+        mod_features: int = 128,
     ):
         super().__init__()
-        
         self.depth = depth
         
-        # Time embedding (simple linear projection)
+        # Time embedding (sinusoidal + linear)
         self.time_embed = nn.Sequential(
-            nn.Linear(1, base_channels * 4),
+            nn.Linear(mod_features, mod_features * 4),
             nn.SiLU(),
-            nn.Linear(base_channels * 4, base_channels * 4),
+            nn.Linear(mod_features * 4, mod_features),
         )
+        self.mod_features = mod_features
         
         # Encoder layers
         self.encoders = nn.ModuleList()
-        in_ch = in_channels * 2  # *2 for conditioning
+        in_ch = in_channels + cond_channels  # Concatenate input + conditioning
+        
         for i in range(depth):
             out_ch = base_channels * (2 ** i)
-            self.encoders.append(self.conv_block(in_ch, out_ch))
+            self.encoders.append(self._conv_block(in_ch, out_ch))
             in_ch = out_ch
         
         # Bottleneck
         bottleneck_ch = base_channels * (2 ** depth)
-        self.bottleneck = self.conv_block(in_ch, bottleneck_ch)
+        self.bottleneck = self._conv_block(in_ch, bottleneck_ch)
         
         # Decoder layers
         self.upconvs = nn.ModuleList()
         self.decoders = nn.ModuleList()
+        
         for i in range(depth - 1, -1, -1):
             out_ch = base_channels * (2 ** i)
-            in_ch = out_ch * 2  # For upconv
+            in_ch_up = base_channels * (2 ** (i + 1)) if i < depth - 1 else bottleneck_ch
             
             self.upconvs.append(
-                nn.ConvTranspose2d(in_ch, out_ch, kernel_size=2, stride=2)
+                nn.ConvTranspose2d(in_ch_up, out_ch, kernel_size=2, stride=2)
             )
-            self.decoders.append(
-                self.conv_block(in_ch, out_ch)
-            )
+            self.decoders.append(self._conv_block(out_ch * 2, out_ch))
         
         # Final output
         self.out_conv = nn.Conv2d(base_channels, out_channels, kernel_size=1)
         
         # Pooling
         self.pool = nn.MaxPool2d(2)
-        
-    def conv_block(self, in_ch, out_ch):
+    
+    def _conv_block(self, in_ch, out_ch):
         """Basic conv block: Conv -> ReLU -> Conv -> ReLU"""
         return nn.Sequential(
             nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1),
@@ -157,32 +158,49 @@ class SimpleUNet(nn.Module):
             nn.ReLU(inplace=True)
         )
     
-    def forward(self, x: torch.Tensor, t: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
+    def _timestep_embedding(self, t, dim):
+        """
+        Create sinusoidal timestep embeddings.
+        Args:
+            t: (B,) tensor of timesteps in [0, 1]
+            dim: embedding dimension
+        Returns:
+            (B, dim) embeddings
+        """
+        half_dim = dim // 2
+        emb = torch.log(torch.tensor(10000.0)) / (half_dim - 1)
+        emb = torch.exp(torch.arange(half_dim, device=t.device) * -emb)
+        emb = t[:, None] * emb[None, :]
+        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
+        return emb
+    
+    def forward(self, x_t, t, cond):
         """
         Args:
-            x: Noisy output frames (B, T_out, C, H, W)
-            t: Diffusion time (B,) - we'll mostly ignore this for simplicity
-            cond: Conditioning input frames (B, T_in, C, H, W)
+            x_t: Noisy output frames (B, T_out, W, H, C)
+            t: Diffusion timesteps (B,) in [0, 1]
+            cond: Conditioning input frames (B, T_cond, W, H, C_cond)
         Returns:
-            Denoised output frames (B, T_out, C, H, W)
+            Denoised output frames (B, T_out, W, H, C)
         """
-        B, T, C, H, W = x.shape
-        _, T_cond, _, _, _ = cond.shape
+        B, T_out, W, H, C = x_t.shape
+        _, T_cond, _, _, C_cond = cond.shape
         
-        # Flatten temporal dimension
-        x_flat = x.reshape(B * T, C, H, W)
-        cond_flat = cond.reshape(B * T_cond, C, H, W)
-        cond_flat = cond_flat.repeat_interleave(T // T_cond, dim=0)
+        # Get time embeddings
+        t_emb = self._timestep_embedding(t, self.mod_features)
+        t_emb = self.time_embed(t_emb)  # (B, mod_features)
+        
+        # Convert to channels-first using einops
+        x_t_cf = rearrange(x_t, "b t w h c -> b (t c) w h")
+        cond_cf = rearrange(cond, "b t w h c -> b (t c) w h")
         
         # Concatenate input with conditioning
-        x_cond = torch.cat([x_flat, cond_flat], dim=1)  # (B*T, 2*C, H, W)
-        
-        # Note: We're ignoring the time embedding `t` for simplicity
-        # In a full implementation, you'd modulate the features with it
+        x_in = torch.cat([x_t_cf, cond_cf], dim=1)
         
         # Encoder with skip connections
         skip_connections = []
-        x = x_cond
+        x = x_in
+        
         for encoder in self.encoders:
             x = encoder(x)
             skip_connections.append(x)
@@ -192,14 +210,23 @@ class SimpleUNet(nn.Module):
         x = self.bottleneck(x)
         
         # Decoder with skip connections
-        skip_connections = skip_connections[::-1]  # Reverse for decoder
+        skip_connections = skip_connections[::-1]
+        
         for i, (upconv, decoder) in enumerate(zip(self.upconvs, self.decoders)):
             x = upconv(x)
+            # Match spatial dimensions if needed
+            if x.shape[2:] != skip_connections[i].shape[2:]:
+                x = torch.nn.functional.interpolate(
+                    x, size=skip_connections[i].shape[2:], 
+                    mode='bilinear', align_corners=False
+                )
             x = torch.cat([x, skip_connections[i]], dim=1)
             x = decoder(x)
         
         # Output
-        out = self.out_conv(x)  # (B*T, C, H, W)
+        out = self.out_conv(x)  # (B, T_out*C, W, H)
         
-        # Reshape back
-        return out.reshape(B, T, C, H, W)
+        # Convert back to channels-last using einops
+        out = rearrange(out, "b (t c) w h -> b t w h c", t=T_out, c=C)
+        
+        return out

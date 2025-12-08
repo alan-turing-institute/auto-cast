@@ -90,21 +90,21 @@ class DiffusionProcessor(Processor):
         t = torch.rand(x_0.size(0), device=x_0.device)  # (B,)
 
         # OPTION A: Use Azula's built-in weighted loss
-        # loss = self.denoiser.loss(x_0, t=t, cond=x_cond)
-        
+        loss = self.denoiser.loss(x_0, t=t, cond=x_cond)
+
         # OPTION B: Manual loss computation : currently the loss implemented here is the same as azula 
 
         # Compute weighted loss
-        alpha_t, sigma_t = self.schedule(t)
-        alpha_t = alpha_t.view(-1, 1, 1, 1, 1) # (B, 1, 1, 1, 1)
-        sigma_t = sigma_t.view(-1, 1, 1, 1, 1) # (B, 1, 1, 1, 1)
+        # alpha_t, sigma_t = self.schedule(t)
+        # alpha_t = alpha_t.view(-1, 1, 1, 1, 1) # (B, 1, 1, 1, 1)
+        # sigma_t = sigma_t.view(-1, 1, 1, 1, 1) # (B, 1, 1, 1, 1)
 
-        noise = torch.randn_like(x_0)
-        x_t = alpha_t * x_0 + sigma_t * noise
+        # noise = torch.randn_like(x_0)
+        # x_t = alpha_t * x_0 + sigma_t * noise
 
-        x_denoised =  self._denoise(x_t, t, cond=x_cond) # Denoised output : (B, T, C, H, W)
-        w_t = (alpha_t / sigma_t) ** 2 + 1
-        w_t = torch.clip(w_t, max=1e4)
+        # x_denoised =  self._denoise(x_t, t, cond=x_cond) # Denoised output : (B, T, C, H, W)
+        # w_t = (alpha_t / sigma_t) ** 2 + 1
+        # w_t = torch.clip(w_t, max=1e4)
         
         loss = (w_t * (x_denoised - x_0).square()).mean()
         self.log(

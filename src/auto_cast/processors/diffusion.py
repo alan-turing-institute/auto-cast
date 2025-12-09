@@ -1,28 +1,20 @@
-import math
-
-import azula
 import torch
-import torch.nn as nn
-
-from auto_cast.processors.base import Processor
-from auto_cast.types import Batch, EncodedBatch, RolloutOutput, Tensor
-from azula.noise import Schedule, VESchedule, VPSchedule, CosineSchedule, RectifiedSchedule
-from azula.denoise import (
-    Denoiser, 
-    SimpleDenoiser, 
-    KarrasDenoiser,
-    DiracPosterior,
-    GaussianPosterior
-)
+from azula.denoise import KarrasDenoiser, SimpleDenoiser
+from azula.noise import Schedule
 
 # Import Azula's samplers
 from azula.sample import (
-    Sampler,
-    DDPMSampler,
     DDIMSampler,
+    DDPMSampler,
     EulerSampler,
     HeunSampler,
+    Sampler,
 )
+from torch import nn
+
+from auto_cast.processors.base import Processor
+from auto_cast.types import EncodedBatch, Tensor
+
 
 class DiffusionProcessor(Processor):
     """Diffusion Processor."""
@@ -31,7 +23,7 @@ class DiffusionProcessor(Processor):
         self,
         backbone: nn.Module,
         schedule: Schedule,
-        denoiser_type: str = 'karras',
+        denoiser_type: str = "karras",
         teacher_forcing_ratio: float = 0.0,
         stride: int = 1,
         max_rollout_steps: int = 10,
@@ -40,7 +32,6 @@ class DiffusionProcessor(Processor):
         n_channels_out: int = 1,
         sampler_steps: int = 50,
     ):
-
         super().__init__()
         self.teacher_forcing_ratio = teacher_forcing_ratio
         self.stride = stride
@@ -51,9 +42,9 @@ class DiffusionProcessor(Processor):
         self.sampler_steps = sampler_steps
 
         # Create Azula denoiser with chosen preconditioning
-        if denoiser_type == 'simple':
+        if denoiser_type == "simple":
             self.denoiser = SimpleDenoiser(backbone=backbone, schedule=schedule)
-        elif denoiser_type == 'karras':
+        elif denoiser_type == "karras":
             self.denoiser = KarrasDenoiser(backbone=backbone, schedule=schedule)
         else:
             raise ValueError(f"Unknown denoiser type: {denoiser_type}")
@@ -61,21 +52,23 @@ class DiffusionProcessor(Processor):
         # Store schedule for direct access
         self.schedule = schedule
 
-
     def map(self, x: Tensor) -> Tensor:
         """Map input window of states/times to output window using denoiser."""
-        # if we start from zero at every autoregressive step,
-        # the model is asked to denoise using t=0, which is a point it has never been trained on.
+        # if we start from zero at every autoregressive step, the model is asked to
+        # denoise using t=0, which is a point it has never been trained on.
         # self.inference_t = 1e-5
         if self.train:
-            msg = "Direct map not implemented during training. Use training_step instead."
+            msg = (
+                "Direct map not implemented during training. Use training_step instead."
+            )
             raise NotImplementedError(msg)
 
         sampler = self._get_sampler(self.sampler_steps, dtype=x.dtype, device=x.device)
         B, _, W, H, _ = x.shape
-        x_1 = sampler.init((B, self.n_steps_output, W, H, self.n_channels_out)) # Fully noised
+        x_1 = sampler.init(
+            (B, self.n_steps_output, W, H, self.n_channels_out)
+        )  # Fully noised
         return sampler(x_1, cond=x)
-
 
     def forward(self, x: Tensor) -> Tensor:
         # Training mode: sample random time and denoise
@@ -86,7 +79,9 @@ class DiffusionProcessor(Processor):
             t = torch.rand(B, device=x.device) * 0.999 + 0.001  # Avoid t=0 or t=1
 
             # Create noisy input
-            x_noisy = torch.randn(B, self.n_steps_output, W, H, self.n_channels_out, device=x.device)
+            x_noisy = torch.randn(
+                B, self.n_steps_output, W, H, self.n_channels_out, device=x.device
+            )
 
             # Denoise (this preserves gradients)
             posterior = self.denoiser(x_noisy, t, cond=x)
@@ -99,10 +94,11 @@ class DiffusionProcessor(Processor):
         posterior = self.denoiser(x, t, cond=cond)
         return posterior.mean
 
-    def training_step(self, batch: EncodedBatch, batch_idx: int) -> Tensor:
+    def training_step(self, batch: EncodedBatch, batch_idx: int) -> Tensor:  # noqa: ARG002
         """Training step with diffusion loss.
 
-        Sample random time steps and compute loss between denoised output and clean data.
+        Sample random time steps and compute loss between denoised output and the
+        clean data.
         """
         x_cond = batch.encoded_inputs
         x_0 = batch.encoded_output_fields  # Clean data : (B, T,C, H, W)
@@ -115,12 +111,12 @@ class DiffusionProcessor(Processor):
 
         # Compute weighted loss
         alpha_t, sigma_t = self.schedule(t)
-        alpha_t = alpha_t.view(-1, 1, 1, 1, 1) # (B, 1, 1, 1, 1)
-        sigma_t = sigma_t.view(-1, 1, 1, 1, 1) # (B, 1, 1, 1, 1)
-        
+        alpha_t = alpha_t.view(-1, 1, 1, 1, 1)  # (B, 1, 1, 1, 1)
+        sigma_t = sigma_t.view(-1, 1, 1, 1, 1)  # (B, 1, 1, 1, 1)
+
         # Call forward in train mode to ensure gradients are tracked
         x_denoised = self.forward(x_cond)
-        
+
         w_t = (alpha_t / sigma_t) ** 2 + 1
         w_t = torch.clip(w_t, max=1e4)
         loss = (w_t * (x_denoised - x_0).square()).mean()
@@ -128,10 +124,12 @@ class DiffusionProcessor(Processor):
             "train_loss",
             loss,
             prog_bar=True,
-            batch_size=batch.encoded_inputs.shape[0]  #  proper averaging across batches
+            batch_size=batch.encoded_inputs.shape[
+                0
+            ],  #  proper averaging across batches
         )
         return loss
-    
+
     @torch.no_grad()
     def validation_step(self, batch: EncodedBatch, batch_idx: int) -> Tensor:  # noqa: ARG002
         # TODO: placeholder for now - same as training step but this should be updated
@@ -144,37 +142,40 @@ class DiffusionProcessor(Processor):
             "validation_loss",
             loss,
             prog_bar=True,
-            batch_size=batch.encoded_inputs.shape[0]  #  proper averaging across batches
+            batch_size=batch.encoded_inputs.shape[
+                0
+            ],  #  proper averaging across batches
         )
         return loss
-    
-    def _get_sampler(self,
+
+    def _get_sampler(
+        self,
         num_steps: int = 100,
-        sampler: str = 'euler',
+        sampler: str = "euler",
         eta: float = 0.0,
         silent: bool = True,
-        **sampler_kwargs
+        **sampler_kwargs,
     ) -> Sampler:
         # Create appropriate Azula sampler
-        if sampler == 'euler':
+        if sampler == "euler":
             azula_sampler = EulerSampler(
                 denoiser=self.denoiser,
                 start=1.0,
                 stop=0.0,
                 steps=num_steps,
                 silent=silent,
-                **sampler_kwargs
+                **sampler_kwargs,
             )
-        elif sampler == 'heun':
+        elif sampler == "heun":
             azula_sampler = HeunSampler(
                 denoiser=self.denoiser,
                 start=1.0,
                 stop=0.0,
                 steps=num_steps,
                 silent=silent,
-                **sampler_kwargs
+                **sampler_kwargs,
             )
-        elif sampler == 'ddim':
+        elif sampler == "ddim":
             azula_sampler = DDIMSampler(
                 denoiser=self.denoiser,
                 eta=eta,
@@ -182,19 +183,22 @@ class DiffusionProcessor(Processor):
                 stop=0.0,
                 steps=num_steps,
                 silent=silent,
-                **sampler_kwargs
+                **sampler_kwargs,
             )
-        elif sampler == 'ddpm':
+        elif sampler == "ddpm":
             azula_sampler = DDPMSampler(
                 denoiser=self.denoiser,
                 start=1.0,
                 stop=0.0,
                 steps=num_steps,
                 silent=silent,
-                **sampler_kwargs
+                **sampler_kwargs,
             )
         else:
-            raise ValueError(f"Unknown sampler: {sampler}. Choose from: 'euler', 'heun', 'ddim', 'ddpm'")
+            raise ValueError(
+                f"Unknown sampler: {sampler}. Choose from: 'euler', 'heun', 'ddim',"
+                "'ddpm'"
+            )
         return azula_sampler
 
     def sample(
@@ -202,15 +206,15 @@ class DiffusionProcessor(Processor):
         x_t: Tensor,
         cond: Tensor,
         num_steps: int = 100,
-        sampler: str = 'euler',
+        sampler: str = "euler",
         eta: float = 0.0,
         return_trajectory: bool = False,
         silent: bool = True,
-        **sampler_kwargs
+        **sampler_kwargs,
     ) -> Tensor:
         """
         Generate samples via reverse diffusion using Azula's samplers.
-        
+
         Args:
             x_t: Starting noise (B, T, C, H, W)
             cond: Conditioning input (B, T_cond, C_cond, H, W)
@@ -224,8 +228,9 @@ class DiffusionProcessor(Processor):
             return_trajectory: If True, return all intermediate steps
             silent: If True, hide progress bar
             **sampler_kwargs: Additional kwargs passed to sampler
-            
-        Returns:
+
+        Returns
+        -------
             Generated samples (B, T, C, H, W)
             Or if return_trajectory=True: List of tensors
         """
@@ -235,21 +240,20 @@ class DiffusionProcessor(Processor):
             eta=eta,
             return_trajectory=return_trajectory,
             silent=silent,
-            **sampler_kwargs
+            **sampler_kwargs,
         )
-        
+
         # Sample using Azula's sampler
         if return_trajectory:
             # Manually collect trajectory
             trajectory = [x_t]
             time_pairs = azula_sampler.timesteps.unfold(0, 2, 1).to(device=x_t.device)
-            
+
             x = x_t
             for t, s in time_pairs:
                 x = azula_sampler.step(x, t, s, cond=cond)
                 trajectory.append(x)
-            
-            # Stack into single tensor , this is just for debugging and visualisation purposes 
+
+            # Stack, this is just for debugging and visualisation purposes
             return torch.stack(trajectory, dim=0)  # (num_steps+1, B, T, C, H, W)
-        else:
-            return azula_sampler(x_t, cond=cond)  # (B, T, C, H, W)
+        return azula_sampler(x_t, cond=cond)  # (B, T, C, H, W)

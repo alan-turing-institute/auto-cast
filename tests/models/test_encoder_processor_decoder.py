@@ -7,10 +7,10 @@ from auto_cast.encoders.permute_concat import PermuteConcat
 from auto_cast.models.encoder_decoder import EncoderDecoder
 from auto_cast.models.encoder_processor_decoder import EncoderProcessorDecoder
 from auto_cast.processors.base import Processor
-from auto_cast.types import Tensor
+from auto_cast.types import EncodedBatch, Tensor
 
 
-class TinyProcessor(Processor):
+class TinyProcessor(Processor[EncodedBatch]):
     def __init__(self, in_channels: int = 1, out_channels: int | None = None) -> None:
         super().__init__()
         out_channels = out_channels or in_channels
@@ -19,12 +19,17 @@ class TinyProcessor(Processor):
             out_channels=out_channels,
             kernel_size=1,
         )
+        self.loss_func = nn.MSELoss()
 
     def forward(self, x: Tensor) -> Tensor:
         return self.conv(x)
 
     def map(self, x: Tensor) -> Tensor:
         return self(x)
+
+    def loss(self, batch: EncodedBatch) -> Tensor:
+        outputs = self(batch.encoded_inputs)
+        return self.loss_func(outputs, batch.encoded_output_fields)
 
 
 def test_encoder_processor_decoder_training_step_runs(make_toy_batch, dummy_loader):
@@ -37,12 +42,10 @@ def test_encoder_processor_decoder_training_step_runs(make_toy_batch, dummy_load
     encoder = PermuteConcat(with_constants=False)
     decoder = ChannelsLast(output_channels=output_channels, time_steps=time_steps)
     loss = nn.MSELoss()
-    encoder_decoder = EncoderDecoder.from_encoder_decoder(
-        encoder=encoder, decoder=decoder, loss_func=loss
-    )
+    encoder_decoder = EncoderDecoder(encoder=encoder, decoder=decoder, loss_func=loss)
 
     processor = TinyProcessor(in_channels=merged_channels)
-    model = EncoderProcessorDecoder.from_encoder_processor_decoder(
+    model = EncoderProcessorDecoder(
         encoder_decoder=encoder_decoder,
         processor=processor,
         loss_func=loss,
@@ -94,13 +97,11 @@ def test_encoder_processor_decoder_rollout_handles_batches(
     encoder = PermuteConcat(with_constants=False)
     decoder = ChannelsLast(output_channels=output_channels, time_steps=n_steps_output)
     loss = nn.MSELoss()
-    encoder_decoder = EncoderDecoder.from_encoder_decoder(
-        encoder=encoder, decoder=decoder, loss_func=loss
-    )
+    encoder_decoder = EncoderDecoder(encoder=encoder, decoder=decoder, loss_func=loss)
     processor = TinyProcessor(
         in_channels=merged_input_channels, out_channels=merged_output_channels
     )
-    model = EncoderProcessorDecoder.from_encoder_processor_decoder(
+    model = EncoderProcessorDecoder(
         encoder_decoder=encoder_decoder,
         processor=processor,
         loss_func=loss,
@@ -159,13 +160,11 @@ def test_encoder_processor_decoder_rollout_handles_short_trajectory(
     encoder = PermuteConcat(with_constants=False)
     decoder = ChannelsLast(output_channels=output_channels, time_steps=n_steps_output)
     loss = nn.MSELoss()
-    encoder_decoder = EncoderDecoder.from_encoder_decoder(
-        encoder=encoder, decoder=decoder, loss_func=loss
-    )
+    encoder_decoder = EncoderDecoder(encoder=encoder, decoder=decoder, loss_func=loss)
     processor = TinyProcessor(
         in_channels=merged_input_channels, out_channels=merged_output_channels
     )
-    model = EncoderProcessorDecoder.from_encoder_processor_decoder(
+    model = EncoderProcessorDecoder(
         encoder_decoder=encoder_decoder,
         processor=processor,
         loss_func=loss,

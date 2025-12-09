@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 
+from auto_cast.models.processor import ProcessorModel
 from auto_cast.processors.base import Processor
 from auto_cast.types import EncodedBatch, Tensor
 
@@ -23,17 +24,17 @@ def _toy_encoded_batch(
     )
 
 
-class _IdentityProcessor(Processor):
-    def __init__(self, *, stride: int, max_rollout_steps: int) -> None:
+class _IdentityProcessor(Processor[EncodedBatch]):
+    def __init__(self) -> None:
         super().__init__(
-            stride=stride,
-            max_rollout_steps=max_rollout_steps,
-            teacher_forcing_ratio=0.0,
             loss_func=nn.MSELoss(),
         )
 
     def map(self, x: Tensor) -> Tensor:
         return x
+
+    def loss(self, batch: EncodedBatch) -> Tensor:
+        return self.loss_func(batch.encoded_inputs, batch.encoded_output_fields)
 
 
 def test_processor_rollout_handles_encoded_batches():
@@ -43,13 +44,16 @@ def test_processor_rollout_handles_encoded_batches():
     stride = 2
     max_rollout_steps = 4
     trajectory_length = 100
-    processor = _IdentityProcessor(stride=stride, max_rollout_steps=max_rollout_steps)
     encoded_batch = _toy_encoded_batch(
         batch_size=batch_size,
         t_in=n_steps_input,
         t_out=trajectory_length - n_steps_input,
     )
-
+    processor = ProcessorModel(
+        processor=_IdentityProcessor(),
+        stride=stride,
+        max_rollout_steps=max_rollout_steps,
+    )
     preds, gts = processor.rollout(encoded_batch, return_windows=True)
 
     assert preds.shape == (10, max_rollout_steps, n_steps_output, 4, 4, 1)
@@ -77,7 +81,11 @@ def test_processor_rollout_handles_short_trajectory():
 
     # Short trajectory: only 6 time steps available for output
     trajectory_length = n_steps_input + 6
-    processor = _IdentityProcessor(stride=stride, max_rollout_steps=max_rollout_steps)
+    processor = ProcessorModel(
+        processor=_IdentityProcessor(),
+        stride=stride,
+        max_rollout_steps=max_rollout_steps,
+    )
     encoded_batch = _toy_encoded_batch(
         batch_size=batch_size,
         t_in=n_steps_input,

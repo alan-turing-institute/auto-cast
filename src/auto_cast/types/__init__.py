@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import TypeVar
 
 import torch
 from jaxtyping import Float
@@ -38,6 +39,7 @@ TensorBCTWH = Float[Tensor, "batch channel time width height"]
 TensorBCTWHD = Float[Tensor, "batch channel time width height depth"]
 TensorBCTHW = Float[Tensor, "batch channel time height width"]
 TensorBCTSPlus = Float[Tensor, "batch channel time spatial *spatial"]
+TensorBTC = Float[Tensor, "batch time channel"]
 
 # Spatial only (no time dimension)
 TensorBCSPlus = Float[Tensor, "batch channel spatial *spatial"]
@@ -55,6 +57,9 @@ Input = Tensor | DataLoader
 
 # Rollout output type
 RolloutOutput = tuple[Tensor, None] | tuple[Tensor, Tensor]
+
+# Generic batch type variable
+BatchT = TypeVar("BatchT")
 
 
 @dataclass

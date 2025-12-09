@@ -29,6 +29,10 @@ class Metric(nn.Module):
         )
         y_pred, y_true, n_spatial_dims = args[:3]
 
+        # reduction flags handled at base level, not passed to score
+        reduce_time = kwargs.pop("reduce_time", False)
+        reduce_channels = kwargs.pop("reduce_channels", False)
+
         # Convert y_pred and y_true to torch.Tensor if they are np.ndarray
         if isinstance(y_pred, np.ndarray):
             y_pred = torch.from_numpy(y_pred)
@@ -48,7 +52,17 @@ class Metric(nn.Module):
         assert y_true.ndim >= n_spatial_dims + 1, (
             "y_true must have at least n_spatial_dims + 1 dimensions"
         )
-        return self.score(y_pred, y_true, n_spatial_dims, **kwargs)
+        # score computes metric over spatial dimensions (e.g. returns shape [B, T, C])
+        output = self.score(y_pred, y_true, n_spatial_dims, **kwargs)
+
+        if reduce_time:
+            # average over time dimension
+            output = output.mean(dim=1)
+        if reduce_channels:
+            # average over channel dimension
+            output = output.mean(dim=-1)
+
+        return output
 
     @staticmethod
     def score(

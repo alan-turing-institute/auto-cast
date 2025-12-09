@@ -26,11 +26,13 @@ class _DiffusionEncodedDataset(Dataset):
         n_steps_output: int,
         n_channels_in: int,
         n_channels_out: int,
+        n_steps: int | None = None,
         spatial_size: int = 8,
     ) -> None:
         super().__init__()
         self.n_steps_input = n_steps_input
         self.n_steps_output = n_steps_output
+        self.n_steps = n_steps
         self.n_channels_in = n_channels_in
         self.n_channels_out = n_channels_out
         self.spatial_size = spatial_size
@@ -48,7 +50,9 @@ class _DiffusionEncodedDataset(Dataset):
         )
         encoded_outputs = torch.randn(
             1,
-            self.n_steps_output,
+            self.n_steps_output
+            if self.n_steps is None
+            else (self.n_steps - self.n_steps_input),
             self.spatial_size,
             self.spatial_size,
             self.n_channels_out,
@@ -66,12 +70,14 @@ def _build_encoded_loader(
     n_steps_output: int,
     n_channels_in: int,
     n_channels_out: int,
+    n_steps: int | None = None,
 ) -> DataLoader:
     dataset = _DiffusionEncodedDataset(
         n_steps_input=n_steps_input,
         n_steps_output=n_steps_output,
         n_channels_in=n_channels_in,
         n_channels_out=n_channels_out,
+        n_steps=n_steps,
     )
     return DataLoader(
         dataset,
@@ -79,6 +85,8 @@ def _build_encoded_loader(
         collate_fn=_single_item_collate,
         num_workers=0,
     )
+
+
 
 
 params = list(
@@ -131,8 +139,9 @@ def test_diffusion_processor(
         schedule=VPSchedule(),
         n_steps_output=n_steps_output,
         n_channels_out=n_channels_out,
+        stride=n_steps_output
     )
-    model = ProcessorModel(processor=processor, sampler_steps=5)
+    model = ProcessorModel(processor=processor, sampler_steps=5, stride=n_steps_output)
     output = model.map(encoded_batch.encoded_inputs)
     assert output.shape == encoded_batch.encoded_output_fields.shape
 
@@ -158,3 +167,14 @@ def test_diffusion_processor(
         model.eval()
         output = model.map(encoded_batch.encoded_inputs)
         assert output.shape == encoded_batch.encoded_output_fields.shape
+
+    # Testing rollout (only when input and output channels match)
+    if n_channels_in == n_channels_out:
+        encoded_rollout_loader = _build_encoded_loader(
+            n_steps_input=n_steps_input,
+            n_steps_output=n_steps_output,
+            n_channels_in=n_channels_in,
+            n_channels_out=n_channels_out,
+        )
+        batch = next(iter(encoded_rollout_loader))
+        model.rollout(batch)

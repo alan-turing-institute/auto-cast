@@ -13,13 +13,15 @@ output:
   save_config: true
 
 training:
-  n_steps_input: 4
-  n_steps_output: 1
+  n_steps_input: 1
+  n_steps_output: 4
+  stride: 4
   autoencoder_checkpoint: null
   freeze_autoencoder: false
 
 encoder_processor_decoder:
   learning_rate: 0.001
+  train_processor_only: false
   loss_func:
     _target_: torch.nn.MSELoss
 

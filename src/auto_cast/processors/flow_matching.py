@@ -17,13 +17,16 @@ class FlowMatchingProcessor(Processor):
         self,
         *,
         flow_matching_model: nn.Module | None = None,
+        backbone: nn.Module | None = None,
+        schedule: Any | None = None,
+        denoiser_type: str | None = None,
         stride: int = 1,
         teacher_forcing_ratio: float = 0.0,
-        max_rollout_steps: int = 1,
+        max_rollout_steps: int = 10,
         loss_func: nn.Module | None = None,
-        learning_rate: float = 1e-3,
+        learning_rate: float = 1e-4,
         flow_ode_steps: int = 1,
-        n_steps_output: int = 1,
+        n_steps_output: int = 4,
         n_channels_out: int = 1,
         backbone_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
@@ -36,7 +39,9 @@ class FlowMatchingProcessor(Processor):
             loss_func=loss_func or nn.MSELoss(),
             **kwargs,
         )
-        self.flow_matching_model = flow_matching_model
+        self.flow_matching_model = flow_matching_model or backbone
+        self.schedule = schedule  # accepted for API compatibility
+        self.denoiser_type = denoiser_type
         self.learning_rate = learning_rate
         self.flow_ode_steps = max(flow_ode_steps, 1)
         self.n_steps_output = n_steps_output
@@ -61,7 +66,7 @@ class FlowMatchingProcessor(Processor):
             **self.backbone_kwargs,
         )
 
-    def forward(self, z: Tensor, t: Tensor, x: Tensor) -> Tensor:
+    def flow_field(self, z: Tensor, t: Tensor, x: Tensor) -> Tensor:
         """Flow matching vector field.
 
         The vector field over the tangent space of output states (z).
@@ -79,6 +84,10 @@ class FlowMatchingProcessor(Processor):
         self._maybe_build_backbone(x)
         assert self.flow_matching_model is not None  # for type checkers
         return self.flow_matching_model(z, t, x)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Alias to map for Lightning/PyTorch compatibility."""
+        return self.map(x)
 
     def map(self, x: Tensor) -> Tensor:
         """Map inputs states (x) to output states (z) by integrating the flow ODE.
@@ -104,26 +113,15 @@ class FlowMatchingProcessor(Processor):
         # Simple fixed-step Euler integration over the flow field.
         dt = torch.tensor(1.0 / self.flow_ode_steps, device=device, dtype=dtype)
         for _ in range(self.flow_ode_steps):
-            z = z + dt * self.forward(z, t, x)
+            z = z + dt * self.flow_field(z, t, x)
             t = t + dt
         return z
 
     def loss(self, batch: EncodedBatch) -> Tensor:
-        """
-        Perform a single flow-matching training step on encoded inputs/targets.
-
-        Args:
-            batch: EncodedBatch containing inputs and target outputs.
-            batch_idx: Index of the batch (unused).
-
-        Returns
-        -------
-            Scalar training loss tensor.
-        """
+        """Compute flow-matching loss for a batch."""
         input_states = batch.encoded_inputs
         target_states = batch.encoded_output_fields
 
-        # Validate target shape against configured output dimensions.
         if (
             target_states.shape[1] != self.n_steps_output
             or target_states.shape[-1] != self.n_channels_out
@@ -134,11 +132,11 @@ class FlowMatchingProcessor(Processor):
                 f"got T_out={target_states.shape[1]}, C_out={target_states.shape[-1]})."
             )
             raise ValueError(msg)
+
         self._maybe_build_backbone(input_states)
 
         batch_size = target_states.shape[0]
 
-        # Sample initial noise and interpolation time, then compute target velocity.
         z0 = torch.randn_like(target_states, requires_grad=True)
         t = torch.rand(
             batch_size, device=target_states.device, dtype=target_states.dtype
@@ -147,8 +145,58 @@ class FlowMatchingProcessor(Processor):
         zt = (1 - t_broadcast) * z0 + t_broadcast * target_states
 
         target_velocity = target_states - z0
-        v_pred = self.forward(zt, t, input_states)
-        flow_loss = torch.mean((v_pred - target_velocity) ** 2)
+        v_pred = self.flow_field(zt, t, input_states)
+        return torch.mean((v_pred - target_velocity) ** 2)
 
-        batch_size = batch.encoded_inputs.shape[0]
-        return flow_loss
+    def training_step(self, batch: EncodedBatch, batch_idx: int) -> Tensor:  # noqa: ARG002
+        """Perform a single flow-matching training step on encoded inputs/targets.
+
+        Args:
+            batch: EncodedBatch containing inputs and target outputs.
+            batch_idx: Index of the batch (unused).
+
+        Returns
+        -------
+            Scalar training loss tensor.
+        """
+        return self.loss(batch)
+        # batch_size = batch.encoded_inputs.shape[0]
+        # self.log("train_loss", flow_loss, prog_bar=True, batch_size=batch_size)
+        # self.log(
+        #     "train_flow_matching_loss",
+        #     flow_loss,
+        #     prog_bar=False,
+        #     batch_size=batch_size,
+        # )
+        # return flow_loss
+
+    def validation_step(self, batch: EncodedBatch, batch_idx: int) -> Tensor:  # noqa: ARG002
+        """Compute validation loss directly on the map output (no rollout).
+
+        Args:
+            batch: EncodedBatch containing inputs and target outputs.
+            batch_idx: Index of the batch (unused).
+
+        Returns
+        -------
+            Scalar validation loss tensor.
+        """
+        target_states = batch.encoded_output_fields
+        if (
+            target_states.shape[1] != self.n_steps_output
+            or target_states.shape[-1] != self.n_channels_out
+        ):
+            msg = (
+                "Validation target shape does not match configured output dimensions "
+                f"(expected T_out={self.n_steps_output}, C_out={self.n_channels_out}, "
+                f"got T_out={target_states.shape[1]}, C_out={target_states.shape[-1]})."
+            )
+            raise ValueError(msg)
+
+        preds = self.map(batch.encoded_inputs)
+        return self.loss_func(preds, target_states)
+
+        # batch_size = batch.encoded_inputs.shape[0]
+        # self.log("val_loss", loss, prog_bar=True, batch_size=batch_size)
+        # self.log("val_rollout_loss", loss, prog_bar=False, batch_size=batch_size)
+        # return loss

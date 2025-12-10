@@ -1,4 +1,4 @@
-# auto-cast
+# AutoCast
 
 ## Installation
 

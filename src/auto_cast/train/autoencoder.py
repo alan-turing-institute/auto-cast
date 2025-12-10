@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import lightning as L
+import matplotlib.pyplot as plt
 import torch
 from hydra import compose, initialize_config_dir
 from hydra.utils import instantiate
@@ -17,6 +18,7 @@ from omegaconf.base import SCMode
 from auto_cast.data.datamodule import SpatioTemporalDataModule
 from auto_cast.data.dataset import SpatioTemporalDataset
 from auto_cast.models.ae import AE
+from auto_cast.types import Batch
 
 log = logging.getLogger(__name__)
 
@@ -169,6 +171,75 @@ def build_model(cfg: DictConfig) -> AE:
     return model
 
 
+def _batch_to_device(batch: Batch, device: torch.device) -> Batch:
+    return Batch(
+        input_fields=batch.input_fields.to(device),
+        output_fields=batch.output_fields.to(device),
+        constant_scalars=(
+            batch.constant_scalars.to(device)
+            if batch.constant_scalars is not None
+            else None
+        ),
+        constant_fields=(
+            batch.constant_fields.to(device)
+            if batch.constant_fields is not None
+            else None
+        ),
+    )
+
+
+def _heatmap_slice(tensor: torch.Tensor) -> torch.Tensor:
+    data = tensor.detach().cpu()
+    while data.ndim > 2:
+        data = data[0]
+    if data.ndim == 1:
+        data = data.unsqueeze(0)
+    return data
+
+
+def _save_reconstructions(
+    model: AE,
+    datamodule: SpatioTemporalDataModule,
+    work_dir: Path,
+    max_batches: int = 4,
+    cmap: str = "viridis",
+) -> None:
+    output_dir = work_dir / "reconstructions"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    device = next(model.parameters()).device
+    model.eval()
+    loader = datamodule.test_dataloader()
+
+    with torch.no_grad():
+        for idx, batch in enumerate(loader):
+            batch_on_device = _batch_to_device(batch, device)
+            outputs, latents = model.forward_with_latent(batch_on_device)
+            inputs = batch_on_device.input_fields
+
+            fig, axs = plt.subplots(1, 4, figsize=(12, 4))
+            for ax in axs:
+                ax.axis("off")
+
+            axs[0].imshow(_heatmap_slice(inputs[0]), cmap=cmap)
+            axs[0].set_title("Input")
+            axs[1].imshow(_heatmap_slice(outputs[0]), cmap=cmap)
+            axs[1].set_title("Reconstruction")
+            difference = outputs[0].detach() - inputs[0]
+            axs[2].imshow(_heatmap_slice(difference), cmap=cmap)
+            axs[2].set_title("Difference")
+            axs[3].imshow(_heatmap_slice(latents[0]), cmap=cmap)
+            axs[3].set_title("Latent")
+
+            fig_path = output_dir / f"batch_{idx:02d}.png"
+            fig.tight_layout()
+            fig.savefig(fig_path)
+            plt.close(fig)
+            log.info("Saved reconstruction preview to %s", fig_path)
+
+            if idx + 1 >= max_batches:
+                break
+
+
 def train_autoencoder(cfg: DictConfig, work_dir: Path) -> Path:
     """Train the autoencoder defined in `cfg` and return the checkpoint path."""
     log.info("Starting autoencoder experiment: %s", cfg.experiment_name)
@@ -187,6 +258,8 @@ def train_autoencoder(cfg: DictConfig, work_dir: Path) -> Path:
     )
     trainer.save_checkpoint(checkpoint_path)
     log.info("Saved checkpoint to %s", checkpoint_path.resolve())
+
+    _save_reconstructions(model, datamodule, work_dir)
 
     if cfg.output.get("save_config", False):
         resolved_cfg_path = work_dir / "resolved_autoencoder_config.yaml"

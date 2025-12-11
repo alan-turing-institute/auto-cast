@@ -3,10 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 import torch
-from omegaconf import DictConfig, OmegaConf
 from torch import nn
 
-from autocast.nn.unet import TemporalUNetBackbone
 from autocast.processors.base import Processor
 from autocast.types import EncodedBatch, Tensor
 
@@ -29,7 +27,6 @@ class FlowMatchingProcessor(Processor):
         flow_ode_steps: int = 1,
         n_steps_output: int = 4,
         n_channels_out: int = 1,
-        backbone_kwargs: dict[str, Any] | DictConfig | None = None,
         **kwargs: Any,
     ) -> None:
         # Store core hyperparameters and optional prebuilt backbone.
@@ -47,37 +44,6 @@ class FlowMatchingProcessor(Processor):
         self.flow_ode_steps = max(flow_ode_steps, 1)
         self.n_steps_output = n_steps_output
         self.n_channels_out = n_channels_out
-        processed_kwargs: dict[str, Any] = {}
-        raw_kwargs: Any | None
-        if isinstance(backbone_kwargs, DictConfig):
-            raw_kwargs = OmegaConf.to_container(backbone_kwargs, resolve=True)
-        else:
-            raw_kwargs = backbone_kwargs
-        if isinstance(raw_kwargs, dict):
-            processed_kwargs = {str(k): v for k, v in raw_kwargs.items()}
-            for field in ("hid_channels", "hid_blocks"):
-                value = processed_kwargs.get(field)
-                if isinstance(value, list):
-                    processed_kwargs[field] = tuple(value)
-        self.backbone_kwargs = processed_kwargs
-
-    def _maybe_build_backbone(self, x: Tensor) -> None:
-        """Lazily build TemporalUNetBackbone when no model is provided."""
-        if self.flow_matching_model is not None:
-            return
-
-        # Infer in/out channels from configured temporal/channel counts.
-        t_in = x.shape[1]
-        c_in = x.shape[-1]
-        t_out = self.n_steps_output
-        c_out = self.n_channels_out
-
-        self.flow_matching_model = TemporalUNetBackbone(
-            in_channels=t_out * c_out,
-            out_channels=t_out * c_out,
-            cond_channels=t_in * c_in,
-            **self.backbone_kwargs,
-        )
 
     def flow_field(self, z: Tensor, t: Tensor, x: Tensor) -> Tensor:
         """Flow matching vector field.
@@ -94,7 +60,6 @@ class FlowMatchingProcessor(Processor):
         -------
             Time derivative of output states with the same shape as `z`.
         """
-        self._maybe_build_backbone(x)
         assert self.flow_matching_model is not None  # for type checkers
         return self.flow_matching_model(z, t, x)
 
@@ -145,8 +110,6 @@ class FlowMatchingProcessor(Processor):
                 f"got T_out={target_states.shape[1]}, C_out={target_states.shape[-1]})."
             )
             raise ValueError(msg)
-
-        self._maybe_build_backbone(input_states)
 
         batch_size = target_states.shape[0]
 

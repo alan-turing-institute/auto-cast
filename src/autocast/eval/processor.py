@@ -30,7 +30,6 @@ from autocast.metrics.spatiotemporal import (
 )
 from autocast.models.encoder_decoder import EncoderDecoder
 from autocast.models.encoder_processor_decoder import EncoderProcessorDecoder
-from autocast.processors.utils import initialize_flow_matching_backbone
 from autocast.train.configuration import (
     compose_training_config,
     configure_module_dimensions,
@@ -340,21 +339,12 @@ def _load_state_dict(checkpoint_path: Path) -> OrderedDict[str, torch.Tensor]:
 def _load_model(
     cfg: DictConfig,
     checkpoint_path: Path,
-    n_steps_input: int,
-    channel_count: int,
-    spatial_shape: Sequence[int],
 ) -> EncoderProcessorDecoder:
     model_cfg = cfg.get("model") or cfg
     encoder = instantiate(model_cfg.encoder)
     decoder = instantiate(model_cfg.decoder)
     encoder_decoder = EncoderDecoder(encoder=encoder, decoder=decoder)
     processor = instantiate(model_cfg.processor)
-    initialize_flow_matching_backbone(
-        processor,
-        n_steps_input,
-        channel_count,
-        spatial_shape,
-    )
     epd_cfg = model_cfg
     learning_rate = epd_cfg.get("learning_rate", 1e-3)
     training_cfg = cfg.get("training") or {}
@@ -486,7 +476,7 @@ def main() -> None:
         channel_count,
         inferred_n_steps_input,
         inferred_n_steps_output,
-        input_shape,
+        _,
         _,
     ) = prepare_datamodule(cfg)
 
@@ -500,13 +490,9 @@ def main() -> None:
 
     metrics = _build_metrics(args.metrics or ("mse", "rmse"))
 
-    spatial_shape = tuple(input_shape[2:-1])
     model = _load_model(
         cfg,
         args.checkpoint,
-        inferred_n_steps_input,
-        channel_count,
-        spatial_shape,
     )
     device = _resolve_device(args.device)
     model.to(device)

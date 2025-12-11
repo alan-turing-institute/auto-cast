@@ -17,7 +17,6 @@ from autocast.logging import create_wandb_logger, maybe_watch_model
 from autocast.models.ae import AE, AELoss
 from autocast.models.encoder_decoder import EncoderDecoder
 from autocast.models.encoder_processor_decoder import EncoderProcessorDecoder
-from autocast.processors.utils import initialize_flow_matching_backbone
 from autocast.train.configuration import (
     compose_training_config,
     configure_module_dimensions,
@@ -245,13 +244,6 @@ def main() -> None:  # noqa: PLR0915
         _freeze_module(encoder_decoder.decoder)
 
     processor = instantiate(model_cfg.processor)
-    spatial_shape = tuple(input_shape[2:-1])
-    initialize_flow_matching_backbone(
-        processor,
-        inferred_n_steps_input,
-        channel_count,
-        spatial_shape,
-    )
 
     epd_cfg = model_cfg
     learning_rate = epd_cfg.get("learning_rate", 1e-3)

@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from torchmetrics import Metric, MetricCollection
 
-from auto_cast.metrics import ALL_METRICS, MSE
+from auto_cast.metrics import ALL_METRICS
 from auto_cast.models.encoder_decoder import EncoderDecoder
 from auto_cast.processors.base import Processor
 from auto_cast.processors.rollout import RolloutMixin
@@ -179,7 +179,7 @@ class EncoderProcessorDecoder(RolloutMixin[Batch], L.LightningModule):
         prefix: str,
     ) -> MetricCollection | None:
         # If no metrics provided, default to a single MSE
-        metrics_list = [MSE()] if metrics is None else metrics
+        metrics_list = [] if metrics is None else metrics
 
         metric_dict: dict[str, Metric | MetricCollection] = {}
 

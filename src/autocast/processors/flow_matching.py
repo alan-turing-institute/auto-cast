@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import torch
+from omegaconf import DictConfig, OmegaConf
 from torch import nn
 
 from autocast.nn.unet import TemporalUNetBackbone
@@ -28,7 +29,7 @@ class FlowMatchingProcessor(Processor):
         flow_ode_steps: int = 1,
         n_steps_output: int = 4,
         n_channels_out: int = 1,
-        backbone_kwargs: dict[str, Any] | None = None,
+        backbone_kwargs: dict[str, Any] | DictConfig | None = None,
         **kwargs: Any,
     ) -> None:
         # Store core hyperparameters and optional prebuilt backbone.
@@ -46,7 +47,19 @@ class FlowMatchingProcessor(Processor):
         self.flow_ode_steps = max(flow_ode_steps, 1)
         self.n_steps_output = n_steps_output
         self.n_channels_out = n_channels_out
-        self.backbone_kwargs = backbone_kwargs or {}
+        processed_kwargs: dict[str, Any] = {}
+        raw_kwargs: Any | None
+        if isinstance(backbone_kwargs, DictConfig):
+            raw_kwargs = OmegaConf.to_container(backbone_kwargs, resolve=True)
+        else:
+            raw_kwargs = backbone_kwargs
+        if isinstance(raw_kwargs, dict):
+            processed_kwargs = {str(k): v for k, v in raw_kwargs.items()}
+            for field in ("hid_channels", "hid_blocks"):
+                value = processed_kwargs.get(field)
+                if isinstance(value, list):
+                    processed_kwargs[field] = tuple(value)
+        self.backbone_kwargs = processed_kwargs
 
     def _maybe_build_backbone(self, x: Tensor) -> None:
         """Lazily build TemporalUNetBackbone when no model is provided."""

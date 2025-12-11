@@ -65,6 +65,14 @@ def _maybe_set(cfg_node: DictConfig | None, key: str, value: int) -> None:
         cfg_node[key] = value
 
 
+def _model_cfg(cfg: DictConfig) -> DictConfig:
+    """Return the nested model config when present, else the root config."""
+    model_cfg = cfg.get("model")
+    if isinstance(model_cfg, DictConfig):
+        return model_cfg
+    return cfg
+
+
 def configure_module_dimensions(
     cfg: DictConfig,
     channel_count: int,
@@ -72,9 +80,11 @@ def configure_module_dimensions(
     n_steps_output: int,
 ) -> None:
     """Populate missing dimension hints for encoder/decoder/processor modules."""
-    _maybe_set(cfg.decoder, "output_channels", channel_count)
-    _maybe_set(cfg.decoder, "time_steps", n_steps_output)
-    processor_cfg = cfg.get("processor")
+    model_cfg = _model_cfg(cfg)
+    decoder_cfg = model_cfg.get("decoder")
+    _maybe_set(decoder_cfg, "output_channels", channel_count)
+    _maybe_set(decoder_cfg, "time_steps", n_steps_output)
+    processor_cfg = model_cfg.get("processor")
     _maybe_set(processor_cfg, "in_channels", channel_count * n_steps_input)
     _maybe_set(processor_cfg, "out_channels", channel_count * n_steps_output)
     _maybe_set(processor_cfg, "n_steps_output", n_steps_output)
@@ -88,7 +98,7 @@ def configure_module_dimensions(
 
 def normalize_processor_cfg(cfg: DictConfig) -> None:
     """Force config values into the shapes expected by processor classes."""
-    processor_cfg = cfg.get("processor")
+    processor_cfg = _model_cfg(cfg).get("processor")
     if processor_cfg is None:
         return
     tuple_fields = ("n_modes",)

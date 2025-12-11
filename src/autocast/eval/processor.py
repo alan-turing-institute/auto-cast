@@ -515,7 +515,7 @@ def main() -> None:
     model.to(device)
 
     test_loader = datamodule.test_dataloader()
-    rows = _evaluate_metrics(model, test_loader, metrics, device, n_spatial_dims)
+    rows = _evaluate_metrics(model, test_loader, metrics, device)
     _write_csv(rows, csv_path, list(metrics.keys()))
 
     aggregate_row = next((row for row in rows if row.get("batch_index") == "all"), None)

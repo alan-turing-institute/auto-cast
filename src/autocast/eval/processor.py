@@ -249,7 +249,6 @@ def _evaluate_metrics(
     dataloader,
     metrics: dict[str, nn.Module],
     device: torch.device,
-    n_spatial_dims: int,
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     totals = dict.fromkeys(metrics, 0.0)
@@ -270,7 +269,7 @@ def _evaluate_metrics(
                 "num_samples": batch_size,
             }
             for name, metric in metrics.items():
-                value = metric(preds, trues, n_spatial_dims)
+                value = metric(preds, trues)
                 scalar = float(value.mean().item())
                 row[name] = scalar
                 totals[name] += scalar * batch_size
@@ -496,8 +495,8 @@ def main() -> None:
         channel_count,
         inferred_n_steps_input,
         inferred_n_steps_output,
-        _input_shape,
-        output_shape,
+        _,
+        _,
     ) = prepare_datamodule(cfg)
 
     configure_module_dimensions(
@@ -508,7 +507,6 @@ def main() -> None:
     )
     normalize_processor_cfg(cfg)
 
-    n_spatial_dims = _infer_spatial_dims(args, output_shape)
     metrics = _build_metrics(args.metrics or ("mse", "rmse"))
 
     model = _load_model(cfg, args.checkpoint)
@@ -516,7 +514,7 @@ def main() -> None:
     model.to(device)
 
     test_loader = datamodule.test_dataloader()
-    rows = _evaluate_metrics(model, test_loader, metrics, device, n_spatial_dims)
+    rows = _evaluate_metrics(model, test_loader, metrics, device)
     _write_csv(rows, csv_path, list(metrics.keys()))
 
     aggregate_row = next((row for row in rows if row.get("batch_index") == "all"), None)

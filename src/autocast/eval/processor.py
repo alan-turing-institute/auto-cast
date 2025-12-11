@@ -507,7 +507,6 @@ def main() -> None:
     )
     normalize_processor_cfg(cfg)
 
-    n_spatial_dims = _infer_spatial_dims(args, output_shape)
     metrics = _build_metrics(args.metrics or ("mse", "rmse"))
 
     model = _load_model(cfg, args.checkpoint)

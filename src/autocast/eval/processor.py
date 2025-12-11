@@ -508,7 +508,7 @@ def main() -> None:
         inferred_n_steps_input,
         inferred_n_steps_output,
         input_shape,
-        output_shape,
+        _,
     ) = prepare_datamodule(cfg)
 
     configure_module_dimensions(

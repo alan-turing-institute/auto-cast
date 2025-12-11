@@ -3,7 +3,9 @@ from typing import Any
 import lightning as L
 import torch
 from torch import nn
+from torchmetrics import Metric, MetricCollection
 
+from autocast.metrics import ALL_METRICS
 from autocast.models.encoder_decoder import EncoderDecoder
 from autocast.processors.base import Processor
 from autocast.processors.rollout import RolloutMixin
@@ -18,6 +20,8 @@ class EncoderProcessorDecoder(RolloutMixin[Batch], L.LightningModule):
     teacher_forcing_ratio: float
     stride: int
     max_rollout_steps: int
+    val_metrics: MetricCollection | None
+    test_metrics: MetricCollection | None
 
     def __init__(
         self,
@@ -29,6 +33,8 @@ class EncoderProcessorDecoder(RolloutMixin[Batch], L.LightningModule):
         max_rollout_steps: int = 10,
         train_processor_only: bool = False,
         loss_func: nn.Module | None = None,
+        val_metrics: list[Metric] | None = None,
+        test_metrics: list[Metric] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__()
@@ -42,6 +48,10 @@ class EncoderProcessorDecoder(RolloutMixin[Batch], L.LightningModule):
         if self.train_processor_only:
             self.encoder_decoder.freeze()
         self.loss_func = loss_func
+
+        self.val_metrics = self._build_metrics(val_metrics, "val_")
+        self.test_metrics = self._build_metrics(test_metrics, "test_")
+
         for key, value in kwargs.items():
             setattr(self, key, value)
 
@@ -110,6 +120,15 @@ class EncoderProcessorDecoder(RolloutMixin[Batch], L.LightningModule):
         self.log(
             "val_loss", loss, prog_bar=True, batch_size=batch.input_fields.shape[0]
         )
+        if self.val_metrics is not None:
+            self.val_metrics.update(y_pred, y_true)
+            self.log_dict(
+                self.val_metrics,
+                prog_bar=False,
+                on_step=False,
+                on_epoch=True,
+                batch_size=batch.input_fields.shape[0],
+            )
         return loss
 
     def test_step(self, batch: Batch, batch_idx: int) -> Tensor:  # noqa: ARG002
@@ -133,6 +152,15 @@ class EncoderProcessorDecoder(RolloutMixin[Batch], L.LightningModule):
         self.log(
             "test_loss", loss, prog_bar=True, batch_size=batch.input_fields.shape[0]
         )
+        if self.test_metrics is not None:
+            self.test_metrics.update(y_pred, y_true)
+            self.log_dict(
+                self.test_metrics,
+                prog_bar=False,
+                on_step=False,
+                on_epoch=True,
+                batch_size=batch.input_fields.shape[0],
+            )
         return loss
 
     def configure_optimizers(self):
@@ -195,6 +223,38 @@ class EncoderProcessorDecoder(RolloutMixin[Batch], L.LightningModule):
             constant_scalars=batch.constant_scalars,
             constant_fields=batch.constant_fields,
         )
+
+    @staticmethod
+    def _build_metrics(
+        metrics: list[Metric] | None,
+        prefix: str,
+    ) -> MetricCollection | None:
+        # If no metrics provided, default to a single MSE
+        metrics_list = [] if metrics is None else metrics
+
+        metric_dict: dict[str, Metric | MetricCollection] = {}
+
+        for metric in metrics_list:
+            if not isinstance(metric, ALL_METRICS):
+                allowed = ", ".join(cls.__name__ for cls in ALL_METRICS)
+                raise ValueError(
+                    f"Invalid metric '{metric}'. Allowed metrics: {allowed}"
+                )
+
+            # Determine metric name
+            name = getattr(metric, "name", None)
+            if not isinstance(name, str):
+                name = metric.__class__.__name__.lower()
+
+            if name in metric_dict:
+                raise ValueError(f"Duplicate metric name '{name}'")
+
+            metric_dict[name] = metric
+
+        if not metric_dict:
+            return None
+
+        return MetricCollection(metric_dict).clone(prefix=prefix)
 
 
 class EPDTrainProcessor(EncoderProcessorDecoder):

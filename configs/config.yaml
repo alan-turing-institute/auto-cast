@@ -1,0 +1,18 @@
+defaults:
+  - data: reaction_diffusion
+  - model: ae
+  - trainer: default
+  - logging: wandb
+  - _self_
+
+seed: 42
+experiment_name: autoencoder
+output:
+  checkpoint_name: autoencoder.ckpt
+  save_config: true
+
+hydra:
+  run:
+    dir: outputs/${experiment_name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: true

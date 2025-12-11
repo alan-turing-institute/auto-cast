@@ -1,0 +1,19 @@
+wandb:
+  enabled: false
+  project: autocast
+  entity: null
+  name: null
+  group: null
+  job_type: ${experiment_name}
+  tags: []
+  notes: null
+  mode: online
+  resume: null
+  id: null
+  log_model: false
+  save_dir: null
+  settings: {}
+  config: {}
+  watch:
+    log: null
+    log_freq: 100

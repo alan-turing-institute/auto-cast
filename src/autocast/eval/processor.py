@@ -495,8 +495,8 @@ def main() -> None:
         channel_count,
         inferred_n_steps_input,
         inferred_n_steps_output,
-        _input_shape,
-        output_shape,
+        _,
+        _,
     ) = prepare_datamodule(cfg)
 
     configure_module_dimensions(

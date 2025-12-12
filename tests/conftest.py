@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 import torch
@@ -8,6 +9,10 @@ from torch.utils.data import DataLoader, Dataset
 
 from autocast.types import Batch, EncodedBatch
 
+
+@pytest.fixture
+def REPO_ROOT() -> str:
+    return Path(__file__).parent.parent
 
 def _make_batch(
     batch_size: int = 1,
@@ -178,3 +183,7 @@ def encoded_dummy_loader(make_toy_batch: Callable[..., Batch]) -> DataLoader:
         collate_fn=_single_item_collate,
         num_workers=0,
     )
+
+if __name__ == "__main__":
+    print(Path(__file__).parent.parent)
+    print('banana')

@@ -274,7 +274,7 @@ def main() -> None:  # noqa: PLR0915
 
     if not args.skip_test:
         log.info("Running evaluation on the test split.")
-        trainer.test(model=model, dataloaders=datamodule.test_dataloader())
+        trainer.test(model=model, datamodule=datamodule)
 
     output_cfg = cfg.get("output") or {}
     checkpoint_name = output_cfg.get(

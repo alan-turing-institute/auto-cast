@@ -6,10 +6,11 @@ from torch import nn
 
 from autocast.decoders import Decoder
 from autocast.encoders import Encoder
+from autocast.models.denorm_mixin import DenormMixin
 from autocast.types import Batch, Tensor, TensorBNC, TensorBTSC
 
 
-class EncoderDecoder(L.LightningModule):
+class EncoderDecoder(DenormMixin):
     """Encoder-Decoder Model."""
 
     encoder: Encoder
@@ -59,9 +60,6 @@ class EncoderDecoder(L.LightningModule):
             "val_loss", loss, prog_bar=True, batch_size=batch.input_fields.shape[0]
         )
         return loss
-
-    def predict_step(self, batch: Batch, batch_idx: int) -> TensorBTSC:  # noqa: ARG002
-        return self(batch)
 
     def encode(self, batch: Batch) -> TensorBNC:
         return self.encoder.encode(batch)

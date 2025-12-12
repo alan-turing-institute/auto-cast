@@ -248,15 +248,24 @@ class SpatioTemporalDataset(Dataset, BatchMixin):
         return self.to_sample(item)
 
     def set_up_normalization(self):
-        """Set up normalizer. Call after metadata has been created."""
-        # Initialize normalization classes if True
-        assert self.metadata is not None, "Metadata must be set before normalization."
+        """
+        Set up normalizer.
+
+        Notes
+        -----
+        - Call method after metadata has been created.
+        - Sets `self.norm` to `None` if `self.use_normalization = False`.
+        """
+
         # TODO: add handling for when these args are inconsistent with each other
         if (
             self.use_normalization
             and self.normalization_path
             and self.normalization_type
         ):
+            if self.metadata is None:
+                msg = "Metadata must be set before normalization."
+                raise ValueError(msg)
             with open(self.normalization_path, mode="r") as f:
                 stats = yaml.safe_load(f)
             # TODO: in The Well they separately track:
@@ -264,7 +273,7 @@ class SpatioTemporalDataset(Dataset, BatchMixin):
             #   - `core_constant_field_names`
             # e.g., core is [`velocity`] instead of [`velocity_x`, `velocity_y`]
             # Here we just flatten the field names because that works for our current
-            # examples but might to handle that here too for more complex datasets
+            # examples but might have to handle that here too for more complex datasets
             self.norm = self.normalization_type(
                 stats,
                 list(chain.from_iterable(self.metadata.field_names.values())),

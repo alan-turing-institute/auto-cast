@@ -14,7 +14,9 @@ output:
 training:
   n_steps_input: 1
   n_steps_output: 4
-  stride: 4
+  train_stride: 1
+  eval_stride: 4
+  stride: 4  # Default stride for backward compatibility
   autoencoder_checkpoint: null
   freeze_autoencoder: false
 

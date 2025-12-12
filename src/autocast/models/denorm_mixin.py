@@ -18,16 +18,12 @@ class DenormMixin(L.LightningModule):
     def on_fit_start(self):
         """Automatically connect to datamodule's normalizer at training start."""
         self._connect_normalizer()
-        # Call parent hook if it exists (for multiple inheritance)
-        if hasattr(super(), "on_fit_start"):
-            super().on_fit_start()
+        super().on_fit_start()
 
     def on_predict_start(self):
         """Automatically connect to datamodule's normalizer at prediction start."""
         self._connect_normalizer()
-        # Call parent hook if it exists (for multiple inheritance)
-        if hasattr(super(), "on_predict_start"):
-            super().on_predict_start()
+        super().on_predict_start()
 
     def _connect_normalizer(self):
         """

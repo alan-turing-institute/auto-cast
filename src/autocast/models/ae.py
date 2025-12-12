@@ -37,7 +37,7 @@ class AELoss(nn.Module):
         return total_loss
 
 
-class AE(EncoderDecoder, DenormMixin):
+class AE(EncoderDecoder):
     """Autoencoder Model."""
 
     encoder: Encoder

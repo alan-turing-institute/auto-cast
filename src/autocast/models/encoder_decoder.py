@@ -10,7 +10,7 @@ from autocast.models.denorm_mixin import DenormMixin
 from autocast.types import Batch, Tensor, TensorBNC, TensorBTSC
 
 
-class EncoderDecoder(L.LightningModule, DenormMixin):
+class EncoderDecoder(DenormMixin):
     """Encoder-Decoder Model."""
 
     encoder: Encoder

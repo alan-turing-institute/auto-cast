@@ -90,6 +90,7 @@ class SpatioTemporalDataset(Dataset, BatchMixin):
         self.normalization_path = normalization_path
         self.autoencoder_mode = autoencoder_mode
         self.metadata: Metadata | None = None
+        self.norm: ZScoreNormalization | None = None
 
         if data_path is not None:
             self.read_data(data_path)

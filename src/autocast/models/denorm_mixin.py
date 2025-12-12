@@ -45,7 +45,7 @@ class DenormMixin(L.LightningModule):
             if hasattr(datamodule, "train_dataset") and hasattr(
                 datamodule.train_dataset, "norm"
             ):
-                self.normalizer = datamodule.train_dataset.norm
+                self.norm = datamodule.train_dataset.norm
 
     def denormalize_batch(
         self,

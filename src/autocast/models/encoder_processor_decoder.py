@@ -13,7 +13,7 @@ from autocast.processors.rollout import RolloutMixin
 from autocast.types import Batch, EncodedBatch, Tensor, TensorBNC, TensorBTSC
 
 
-class EncoderProcessorDecoder(RolloutMixin[Batch], L.LightningModule, DenormMixin):
+class EncoderProcessorDecoder(RolloutMixin[Batch], DenormMixin):
     """Encoder-Processor-Decoder Model."""
 
     encoder_decoder: EncoderDecoder

@@ -11,7 +11,7 @@ from autocast.processors.rollout import RolloutMixin
 from autocast.types import EncodedBatch, Tensor, TensorBNC
 
 
-class ProcessorModel(RolloutMixin[EncodedBatch], ABC, L.LightningModule, DenormMixin):
+class ProcessorModel(RolloutMixin[EncodedBatch], ABC, DenormMixin):
     """Processor Base Class."""
 
     processor: Processor
